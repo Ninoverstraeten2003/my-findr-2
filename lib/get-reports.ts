@@ -74,7 +74,9 @@ async function fetchDevicesReports(
   const response = await fetch(apiURL, options);
 
   if (!response.ok) {
-    throw new Error("Network response was not ok");
+    const error: any = new Error("Network response was not ok");
+    error.status = response.status;
+    throw error;
   }
 
   return response.json().then((response) => {

@@ -12,7 +12,7 @@ export function useDeviceReports(
   days: number
 ) {
   return useSWR<DeviceReport[]>(
-    device && apiURL ? ["deviceReports", device.id, days] : null,
+    device && apiURL ? ["deviceReports", device.id, days, username, password] : null,
     async () => {
       if (!device) throw new Error("Device is required");
       return getReportsForDevice(device, apiURL, username, password, days);
@@ -21,6 +21,16 @@ export function useDeviceReports(
       revalidateOnFocus: false,
       dedupingInterval: 60_000,
       refreshInterval: 300_000,
+      onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        // Never retry on 404.
+        if (error.status === 404) return;
+        // Never retry on 401/403 (Auth).
+        if (error.status === 401 || error.status === 403) return;
+        // Only retry up to 10 times.
+        if (retryCount >= 10) return;
+        // Retry after 5 seconds.
+        setTimeout(() => revalidate({ retryCount }), 5000);
+      },
     }
   );
 }
