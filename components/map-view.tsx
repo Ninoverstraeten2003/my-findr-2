@@ -13,6 +13,7 @@ import { Slider } from "@/components/ui/slider";
 import { Download, Copy, Settings, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Dynamically import the Leaflet map to avoid SSR issues
 const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
@@ -224,7 +225,14 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
 
       {/* Guessed Location Info */}
       {guessedLocation && !isLoading && (
-        <div className="absolute bottom-6 left-4 z-[1000] md:bottom-auto md:top-3 md:left-3">
+        <div
+          className={cn(
+            "absolute z-[1000] left-4 transition-all duration-300",
+            reports.length > 1 && showHistory
+              ? "bottom-36 md:bottom-auto md:top-3 md:left-3"
+              : "bottom-6 md:bottom-auto md:top-3 md:left-3"
+          )}
+        >
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-md">
             <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_hsl(199_89%_48%/0.6)]" />
             <div className="flex flex-col">

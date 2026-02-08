@@ -68,7 +68,7 @@ export default function LeafletMap({
       zoomControl: false,
     });
 
-    L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.control.zoom({ position: "topleft" }).addTo(map);
 
     L.tileLayer(isDark ? DARK_TILE_URL : LIGHT_TILE_URL, {
       attribution: '&copy; <a href="https://carto.com">CARTO</a>',
