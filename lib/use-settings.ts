@@ -12,6 +12,7 @@ export const defaultSettings: AppSettings = {
   days: 1,
   showHistory: true,
   mapTheme: "system",
+  appTheme: "system",
   devices: [],
 };
 
@@ -21,7 +22,8 @@ function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultSettings;
-    return JSON.parse(raw) as AppSettings;
+    const loaded = JSON.parse(raw);
+    return { ...defaultSettings, ...loaded };
   } catch {
     return defaultSettings;
   }
@@ -68,6 +70,8 @@ export function useSettings(): [
              const newSettings = { ...defaultSettings, ...parsed };
              setSettings(newSettings);
              saveSettings(newSettings);
+             // Dispatch event to notify other instances
+             window.dispatchEvent(new Event("settings-updated"));
              
              // Clean up URL (remove query and hash)
              const newUrl = window.location.pathname;
@@ -84,17 +88,32 @@ export function useSettings(): [
     };
 
     handleUrlSettings();
+
+    // Listen for updates from other instances
+    const handleStorageUpdate = () => {
+      setSettings(loadSettings());
+    };
+    window.addEventListener("settings-updated", handleStorageUpdate);
+    // Also listen to storage events (cross-tab sync)
+    window.addEventListener("storage", handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener("settings-updated", handleStorageUpdate);
+      window.removeEventListener("storage", handleStorageUpdate);
+    };
   }, []);
 
   const update = useCallback((s: AppSettings) => {
     setSettings(s);
     saveSettings(s);
+    window.dispatchEvent(new Event("settings-updated"));
   }, []);
 
   const clear = useCallback(() => {
     setSettings(defaultSettings);
     if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);
+      window.dispatchEvent(new Event("settings-updated"));
     }
   }, []);
 

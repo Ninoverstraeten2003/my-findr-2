@@ -38,6 +38,7 @@ export interface AppSettings {
   days: number;
   showHistory: boolean;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
+  appTheme: "system" | "light" | "dark";
   devices: Device[];
 }
 

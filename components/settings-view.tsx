@@ -103,10 +103,17 @@ export default function SettingsView() {
   const [shareUrl, setShareUrl] = useState("");
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isReset, setIsReset] = useState(false);
 
   // Sync storeSettings on mount
   useEffect(() => {
     setSettingsForm(storeSettings);
+    // Sync theme from stored settings
+    // We check if it exists to avoid overwriting with undefined
+    if (storeSettings.appTheme) {
+      setTheme(storeSettings.appTheme);
+    }
   }, [storeSettings]);
 
   const validateDevice = useCallback(
@@ -222,8 +229,9 @@ export default function SettingsView() {
   const clearSettings = useCallback(() => {
     deleteStoredSettings();
     setSettingsForm(defaultSettings);
-    toast({ title: "Settings cleared" });
-  }, [deleteStoredSettings, toast]);
+    setIsReset(true);
+    setTimeout(() => setIsReset(false), 2000);
+  }, [deleteStoredSettings]);
 
   const generateShareLink = useCallback(async () => {
     setIsGeneratingLink(true);
@@ -247,8 +255,9 @@ export default function SettingsView() {
 
   const copyShareLink = useCallback(() => {
     navigator.clipboard.writeText(shareUrl);
-    toast({ title: "Link copied to clipboard" });
-  }, [shareUrl, toast]);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  }, [shareUrl]);
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8 max-w-2xl mx-auto">
@@ -338,7 +347,13 @@ export default function SettingsView() {
           </div>
           <div className="flex flex-col gap-3">
             <Label>App Theme</Label>
-            <Select value={theme} onValueChange={setTheme}>
+            <Select 
+              value={settingsForm.appTheme || "system"} 
+              onValueChange={(value: "light" | "dark" | "system") => {
+                setTheme(value);
+                setSettingsForm({ ...settingsForm, appTheme: value });
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a theme" />
               </SelectTrigger>
@@ -627,8 +642,17 @@ export default function SettingsView() {
           onClick={clearSettings}
           className="flex-1 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10 bg-transparent"
         >
-          <RotateCcw className="h-4 w-4 mr-1.5" />
-          Reset
+          {isReset ? (
+            <>
+              <Check className="h-4 w-4 mr-1.5" />
+              Reset
+            </>
+          ) : (
+            <>
+              <RotateCcw className="h-4 w-4 mr-1.5" />
+              Reset
+            </>
+          )}
         </Button>
       </div>
 
@@ -652,9 +676,19 @@ export default function SettingsView() {
                 readOnly
               />
             </div>
-            <Button type="submit" size="sm" onClick={copyShareLink} className="px-3">
+            <Button
+              type="submit"
+              size="sm"
+              onClick={copyShareLink}
+              className="px-3"
+              disabled={isCopied}
+            >
               <span className="sr-only">Copy</span>
-              <Share2 className="h-4 w-4" />
+              {isCopied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Share2 className="h-4 w-4" />
+              )}
             </Button>
           </div>
           <DialogFooter className="sm:justify-start">

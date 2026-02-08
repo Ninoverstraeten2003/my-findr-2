@@ -312,6 +312,13 @@ export default function LeafletMap({
   return (
     <>
       <style>{`
+        .leaflet-container {
+          background-color: ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "#ffffff" // Ocean color usually works well, or just white/light gray
+              : "#000000"
+          } !important;
+        }
         @keyframes map-pulse {
           0% { transform: scale(1); opacity: 0.6; }
           70% { transform: scale(3); opacity: 0; }
