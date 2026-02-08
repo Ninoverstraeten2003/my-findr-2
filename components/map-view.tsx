@@ -266,10 +266,9 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
       {guessedLocation && !isLoading && (
         <div
           className={cn(
-            "absolute z-[1000] left-4 transition-all duration-300",
-            reports.length > 1 && showHistory
-              ? "bottom-36 md:bottom-auto md:top-3 md:left-3"
-              : "bottom-6 md:bottom-auto md:top-3 md:left-3"
+            "absolute z-[1000] transition-all duration-300",
+            "bottom-4 left-1/2 -translate-x-1/2",
+            "md:bottom-auto md:top-3 md:left-3 md:translate-x-0"
           )}
         >
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-md">
