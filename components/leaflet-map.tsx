@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
@@ -313,6 +313,40 @@ export default function LeafletMap({
     onCopyLocation,
   ]);
 
+
+  // Check if map is centered
+  const [isCentered, setIsCentered] = useState(true);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const checkCenter = () => {
+      if (!mapRef.current) return;
+      const mapCenter = mapRef.current.getCenter();
+      const targetCenter = L.latLng(center);
+      
+      // Calculate distance in pixels to be zoom-independent for "closeness"
+      const mapPoint = mapRef.current.latLngToContainerPoint(mapCenter);
+      const targetPoint = mapRef.current.latLngToContainerPoint(targetCenter);
+      const dist = mapPoint.distanceTo(targetPoint);
+      
+      setIsCentered(dist < 50); // Threshold of 50 pixels
+    };
+
+    const map = mapRef.current;
+    map.on("move", checkCenter);
+    map.on("moveend", checkCenter);
+    
+    // Initial check
+    checkCenter();
+
+    return () => {
+      map.off("move", checkCenter);
+      map.off("moveend", checkCenter);
+    };
+  }, [center]); // Rerun listener setup if center changes so targetCenter is fresh in closure? 
+  // Actually, 'center' is a dep, so yes.
+
   return (
     <>
       <style>{`
@@ -354,7 +388,39 @@ export default function LeafletMap({
           } !important;
         }
       `}</style>
-      <div ref={containerRef} className="h-full w-full" />
+      <div className="relative h-full w-full">
+        <div ref={containerRef} className="h-full w-full" />
+        
+        {/* Recenter Button */}
+        {!isCentered && (
+           <button
+             onClick={() => {
+               if (mapRef.current) {
+                 mapRef.current.setView(center, zoom, { animate: true });
+               }
+             }}
+             className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
+             style={{
+               backgroundColor: activeTheme === "light" || activeTheme === "streets" 
+                 ? "rgba(255, 255, 255, 0.9)" 
+                 : "rgba(30, 30, 30, 0.9)",
+               color: activeTheme === "light" || activeTheme === "streets" ? "#000" : "#fff",
+               border: "1px solid rgba(128,128,128,0.2)",
+               backdropFilter: "blur(4px)",
+             }}
+             aria-label="Recenter Map"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+               <line x1="12" y1="5" x2="12" y2="19"></line>
+               <line x1="5" y1="12" x2="19" y2="12"></line>
+               <circle cx="12" cy="12" r="3"></circle>
+               <path d="M12 2a10 10 0 0 1 10 10"></path>
+               <path d="M12 22a10 10 0 0 1-10-10"></path>
+             </svg>
+             <span className="sr-only">Recenter</span>
+           </button>
+        )}
+      </div>
     </>
   );
 }
