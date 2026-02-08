@@ -139,7 +139,10 @@ export default function LeafletMap({
         break;
     }
 
-    const layer = L.tileLayer(url, { attribution: attr });
+    const layer = L.tileLayer(url, {
+      attribution: attr,
+      className: activeTheme === "dark" ? "map-tiles-dark" : "",
+    });
     layer.addTo(mapRef.current);
     layer.bringToBack();
     tileLayerRef.current = layer;
@@ -318,6 +321,9 @@ export default function LeafletMap({
               ? "#ffffff" // Ocean color usually works well, or just white/light gray
               : "#000000"
           } !important;
+        }
+        .map-tiles-dark {
+          filter: brightness(1.2) contrast(0.9);
         }
         @keyframes map-pulse {
           0% { transform: scale(1); opacity: 0.6; }
