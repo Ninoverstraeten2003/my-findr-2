@@ -6,6 +6,5 @@ Features
 - Date Filtering
 - Export to KML
 - Sharing of theme with devices
-- Search Street
 
 <img src="https://github.com/Ninoverstraeten2003/my-findr-2/blob/main/screen.png" width="500">
