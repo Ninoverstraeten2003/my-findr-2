@@ -176,10 +176,10 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
 
       {/* Loading Indicator */}
       {isLoading && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000]">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/90 backdrop-blur-sm border border-border shadow-md">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            <span className="text-xs text-card-foreground font-medium">
+        <div className="absolute bottom-24 md:top-3 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/95 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-sm font-medium text-foreground">
               Loading reports...
             </span>
           </div>
@@ -188,39 +188,78 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
 
       {/* History Slider and Export */}
       {reports.length > 1 && showHistory && (
-        <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
-          <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-lg pointer-events-auto">
-            <div className="flex-1 flex flex-col gap-1.5">
-              <div className="flex justify-between px-1">
-                <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
-                  {getSliderLabel(filterRange[0])}
-                </span>
-                <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+        <>
+          {/* Mobile Vertical Slider */}
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] pointer-events-none md:hidden">
+            <div className="flex items-stretch gap-3 p-3 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-lg pointer-events-auto h-80">
+              <div className="flex flex-col justify-between py-10 w-20">
+                <span className="text-[10px] font-medium text-muted-foreground text-right leading-tight">
                   {getSliderLabel(filterRange[1])}
                 </span>
+                <span className="text-[10px] font-medium text-muted-foreground text-right leading-tight">
+                  {getSliderLabel(filterRange[0])}
+                </span>
               </div>
-              <Slider
-                value={filterRange}
-                onValueChange={(v) =>
-                  setFilterRange(v as [number, number])
-                }
-                min={1}
-                max={reports.length}
-                step={1}
-                className="w-full"
-              />
+              <div className="flex flex-col items-center gap-4 h-full">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => exportKML(filteredReports)}
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="sr-only">Export KML</span>
+                </Button>
+                <Slider
+                  orientation="vertical"
+                  value={filterRange}
+                  onValueChange={(v) =>
+                    setFilterRange(v as [number, number])
+                  }
+                  min={1}
+                  max={reports.length}
+                  step={1}
+                  className="flex-1"
+                />
+              </div>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 shrink-0 self-end"
-              onClick={() => exportKML(filteredReports)}
-            >
-              <Download className="h-4 w-4" />
-              <span className="sr-only">Export KML</span>
-            </Button>
           </div>
-        </div>
+
+          {/* Desktop Horizontal Slider */}
+          <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none hidden md:block">
+            <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-lg pointer-events-auto">
+              <div className="flex-1 flex flex-col gap-1.5">
+                <div className="flex justify-between px-1">
+                  <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+                    {getSliderLabel(filterRange[0])}
+                  </span>
+                  <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+                    {getSliderLabel(filterRange[1])}
+                  </span>
+                </div>
+                <Slider
+                  value={filterRange}
+                  onValueChange={(v) =>
+                    setFilterRange(v as [number, number])
+                  }
+                  min={1}
+                  max={reports.length}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 shrink-0 self-end mb-1"
+                onClick={() => exportKML(filteredReports)}
+              >
+                <Download className="h-4 w-4" />
+                <span className="sr-only">Export KML</span>
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Guessed Location Info */}
