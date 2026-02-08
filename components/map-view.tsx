@@ -40,6 +40,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
   const [guessedLocation, setGuessedLocation] = useState<[number, number]>();
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
   const [isCopied, setIsCopied] = useState(false);
+  const [isDevicesPanelOpen, setIsDevicesPanelOpen] = useState(true);
   const shouldZoomRef = useRef(false);
 
   const isMissingRequiredSettings =
@@ -194,6 +195,11 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
           navigator.clipboard.writeText(url);
           toast({ title: "Map link copied" });
         }}
+        onSearchStart={() => {
+          if (window.innerWidth < 768) {
+            setIsDevicesPanelOpen(false);
+          }
+        }}
       />
 
 
@@ -203,6 +209,8 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         onDeviceChosen={onDeviceChosen}
         currentDevice={currentDevice}
         isLoading={isLoading}
+        isOpen={isDevicesPanelOpen}
+        onToggle={() => setIsDevicesPanelOpen(!isDevicesPanelOpen)}
       />
 
       {/* Loading Indicator */}

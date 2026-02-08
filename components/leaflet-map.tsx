@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { GeoSearchControl, OpenStreetMapProvider } from "leaflet-geosearch";
+import "leaflet-geosearch/assets/css/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
 import { timeSince } from "@/lib/app-utils";
 
@@ -43,6 +45,7 @@ interface LeafletMapProps {
   showHistory: boolean;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   onCopyLocation: (lat: number, lon: number) => void;
+  onSearchStart?: () => void;
 }
 
 export default function LeafletMap({
@@ -54,6 +57,7 @@ export default function LeafletMap({
   showHistory,
   mapTheme,
   onCopyLocation,
+  onSearchStart,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -68,7 +72,7 @@ export default function LeafletMap({
     mapTheme === "system" ? (isDark ? "dark" : "light") : mapTheme;
   const useDarkMarkers = activeTheme === "dark" || activeTheme === "satellite";
 
-  // Initialize map once
+// Initialize map once
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -86,6 +90,36 @@ export default function LeafletMap({
     });
 
     L.control.zoom({ position: "topleft" }).addTo(map);
+
+    // Add Search Control
+    const provider = new OpenStreetMapProvider();
+    // @ts-ignore - types mismatch with leaflet version or missing types
+    const searchControl = new GeoSearchControl({
+      provider,
+      style: "button",
+      showMarker: true,
+      showPopup: false,
+      autoClose: true,
+      marker: {
+        icon: new L.Icon.Default(),
+        draggable: false,
+      },
+    });
+    map.addControl(searchControl);
+    
+    // Add event listener to search container to trigger onSearchStart
+    setTimeout(() => {
+      const searchContainer = containerRef.current?.querySelector('.leaflet-control-geosearch');
+      if (searchContainer && onSearchStart) {
+         // Listen for clicks on the button/container
+         searchContainer.addEventListener('click', onSearchStart);
+         // Also listen for focus events if input is directly accessible (though usually valid for bar style)
+         const input = searchContainer.querySelector('input');
+         if (input) {
+            input.addEventListener('focus', onSearchStart);
+         }
+      }
+    }, 100);
 
     // Tile layer managed in separate useEffect
 

@@ -21,7 +21,7 @@ export default function Page() {
             <Radar className="h-4.5 w-4.5 text-primary" />
           </div>
           <span className="text-sm font-semibold text-foreground tracking-tight">
-            FindMy Tracker
+            Macless-Haystack Tracker
           </span>
         </div>
         <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50 border border-border">

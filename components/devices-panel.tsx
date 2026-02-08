@@ -48,6 +48,8 @@ interface DevicesPanelProps {
   onDeviceChosen: (device: Device) => void;
   currentDevice: Device | undefined;
   isLoading?: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 export default function DevicesPanel({
@@ -55,9 +57,9 @@ export default function DevicesPanel({
   onDeviceChosen,
   currentDevice,
   isLoading,
+  isOpen,
+  onToggle,
 }: DevicesPanelProps) {
-  const [isOpen, setIsOpen] = useState(true);
-
   if (!devices || devices.length === 0) return null;
 
   const status = pluralize(devices.length, "Device");
@@ -68,7 +70,7 @@ export default function DevicesPanel({
         {/* Header */}
         <button
           type="button"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={onToggle}
           className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-card-foreground hover:bg-secondary/40 transition-colors"
         >
           <div className="flex items-center gap-2">

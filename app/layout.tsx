@@ -12,8 +12,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FindMy Tracker",
-  description: "Track your devices with a modern, sleek interface",
+  title: "Macless-Haystack Tracker",
+  description: "Track your esp32 or nrf devices with a modern, sleek interface",
 };
 
 export const viewport: Viewport = {
