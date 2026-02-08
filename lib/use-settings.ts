@@ -11,8 +11,10 @@ export const defaultSettings: AppSettings = {
   password: "",
   days: 1,
   showHistory: true,
+  mapTheme: "system",
   devices: [],
 };
+
 
 function loadSettings(): AppSettings {
   if (typeof window === "undefined") return defaultSettings;

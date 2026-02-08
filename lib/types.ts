@@ -37,5 +37,7 @@ export interface AppSettings {
   password: string;
   days: number;
   showHistory: boolean;
+  mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   devices: Device[];
 }
+

@@ -10,7 +10,7 @@ import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Download, Copy, Settings, Loader2 } from "lucide-react";
+import { Download, Copy, Settings, Loader2, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,10 +39,13 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
   const [zoom, setZoom] = useState(7);
   const [guessedLocation, setGuessedLocation] = useState<[number, number]>();
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
+  const [isCopied, setIsCopied] = useState(false);
   const shouldZoomRef = useRef(false);
 
   const isMissingRequiredSettings =
     settings.apiURL === "" || settings.devices.length === 0;
+
+  const showHistory = settings.showHistory !== false;
 
   const {
     data: reports = [],
@@ -109,7 +112,14 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
       const best = calculateBestLocation(filteredReports);
       if (best) {
         setGuessedLocation([best.lat, best.lon]);
-        setCurrentPosition([best.lat, best.lon]);
+
+        if (showHistory) {
+          const lastReport = filteredReports[filteredReports.length - 1];
+          const loc = lastReport.decrypedPayload.location;
+          setCurrentPosition([loc.latitude, loc.longitude]);
+        } else {
+          setCurrentPosition([best.lat, best.lon]);
+        }
 
         if (shouldZoomRef.current) {
           setZoom(16);
@@ -117,7 +127,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         }
       }
     }
-  }, [filteredReports]);
+  }, [filteredReports, showHistory]);
 
   const getSliderLabel = useCallback(
     (reportIndex: number) => {
@@ -128,8 +138,27 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
     [reports]
   );
 
-  const showHistory = settings.showHistory !== false;
   const deviceColor = currentDevice?.hexColor || "#0ea5e9";
+
+  const displayLocation = useMemo(() => {
+    if (showHistory && filteredReports.length > 0) {
+      const last = filteredReports[filteredReports.length - 1];
+      const loc = last.decrypedPayload.location;
+      return {
+        lat: loc.latitude,
+        lon: loc.longitude,
+        label: "Latest Location",
+      };
+    }
+    if (guessedLocation && !showHistory) {
+      return {
+        lat: guessedLocation[0],
+        lon: guessedLocation[1],
+        label: "Current Location",
+      };
+    }
+    return null;
+  }, [showHistory, filteredReports, guessedLocation]);
 
   // Missing settings view
   if (isMissingRequiredSettings) {
@@ -159,12 +188,14 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         guessedLocation={guessedLocation}
         deviceColor={deviceColor}
         showHistory={showHistory}
+        mapTheme={settings.mapTheme || "system"}
         onCopyLocation={(lat, lon) => {
           const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
           navigator.clipboard.writeText(url);
           toast({ title: "Map link copied" });
         }}
       />
+
 
       {/* Device Panel */}
       <DevicesPanel
@@ -262,22 +293,28 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         </>
       )}
 
-      {/* Guessed Location Info */}
-      {guessedLocation && !isLoading && (
+      {/* Location Info */}
+      {displayLocation && !isLoading && (
         <div
           className={cn(
             "absolute z-[1000] left-4 transition-all duration-300",
-            "bottom-6 md:bottom-auto md:top-3 md:left-3"
+            "bottom-6 md:bottom-auto md:top-3 md:left-14"
           )}
         >
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-md">
-            <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_hsl(199_89%_48%/0.6)]" />
+            <div
+              className="w-2.5 h-2.5 rounded-full transition-colors duration-300"
+              style={{
+                backgroundColor: deviceColor,
+                boxShadow: `0 0 8px ${deviceColor}CC`,
+              }}
+            />
             <div className="flex flex-col">
               <span className="text-xs font-medium text-card-foreground">
-                Best Location
+                {displayLocation.label}
               </span>
               <span className="text-[10px] text-muted-foreground font-mono">
-                {guessedLocation[0].toFixed(5)}, {guessedLocation[1].toFixed(5)}
+                {displayLocation.lat.toFixed(5)}, {displayLocation.lon.toFixed(5)}
               </span>
             </div>
             <Button
@@ -285,12 +322,17 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
               variant="ghost"
               className="h-7 w-7 ml-1"
               onClick={() => {
-                const url = `https://www.google.com/maps/search/?api=1&query=${guessedLocation[0]},${guessedLocation[1]}`;
+                const url = `https://www.google.com/maps/search/?api=1&query=${displayLocation.lat},${displayLocation.lon}`;
                 navigator.clipboard.writeText(url);
-                toast({ title: "Map link copied" });
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
               }}
             >
-              <Copy className="h-3.5 w-3.5" />
+              {isCopied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
               <span className="sr-only">Copy map link</span>
             </Button>
           </div>

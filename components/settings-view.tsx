@@ -23,6 +23,7 @@ import {
   Save,
   Share2,
   RotateCcw,
+  Check,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,15 @@ import { getAdvertisementKey } from "@/lib/decrypt-payload";
 import { pluralize } from "@/lib/app-utils";
 import type { Device, AppSettings } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useTheme } from "next-themes";
+
 
 const iconMap: Record<string, LucideIcon> = {
   MapPin,
@@ -81,6 +91,7 @@ import {
 
 export default function SettingsView() {
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const [storeSettings, updateStoredSettings, deleteStoredSettings] =
     useSettings();
   const [settingsForm, setSettingsForm] = useState<AppSettings>(storeSettings);
@@ -91,6 +102,7 @@ export default function SettingsView() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   // Sync storeSettings on mount
   useEffect(() => {
@@ -155,7 +167,8 @@ export default function SettingsView() {
       return;
     }
     updateStoredSettings(settingsForm);
-    toast({ title: "Settings saved" });
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
   }, [settingsForm, updateStoredSettings, toast]);
 
   const addDevice = useCallback(
@@ -323,6 +336,40 @@ export default function SettingsView() {
               className="w-full"
             />
           </div>
+          <div className="flex flex-col gap-3">
+            <Label>App Theme</Label>
+            <Select value={theme} onValueChange={setTheme}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a theme" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">System (Auto)</SelectItem>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-3">
+            <Label>Map Theme</Label>
+            <Select
+              value={settingsForm.mapTheme || "system"}
+              onValueChange={(value: any) =>
+                setSettingsForm({ ...settingsForm, mapTheme: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a theme" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">System (Auto)</SelectItem>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+                <SelectItem value="satellite">Satellite</SelectItem>
+                <SelectItem value="streets">Streets</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Separator />
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
@@ -543,9 +590,22 @@ export default function SettingsView() {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <Button onClick={saveSettings} className="flex-1">
-          <Save className="h-4 w-4 mr-1.5" />
-          Save Settings
+        <Button 
+          onClick={saveSettings} 
+          className="flex-1 transition-all duration-200"
+          variant={isSaved ? "outline" : "default"}
+        >
+          {isSaved ? (
+            <>
+              <Check className="h-4 w-4 mr-1.5" />
+              Saved!
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-1.5" />
+              Save Settings
+            </>
+          )}
         </Button>
         <Button 
           variant="outline" 
