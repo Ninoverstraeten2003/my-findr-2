@@ -67,7 +67,6 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
     (device: Device) => {
       const isSameDevice = currentDevice?.id === device.id;
       if (isSameDevice) {
-        mutate();
         if (guessedLocation) {
           setZoom(16);
           setCurrentPosition([guessedLocation[0], guessedLocation[1]]);
