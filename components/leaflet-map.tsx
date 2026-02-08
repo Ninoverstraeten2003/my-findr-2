@@ -82,6 +82,7 @@ export default function LeafletMap({
       center,
       zoom: 7,
       zoomControl: false,
+      minZoom: 3,
     });
 
     L.control.zoom({ position: "topleft" }).addTo(map);
@@ -318,8 +319,8 @@ export default function LeafletMap({
         .leaflet-container {
           background-color: ${
             activeTheme === "light" || activeTheme === "streets"
-              ? "#ffffff" // Ocean color usually works well, or just white/light gray
-              : "#000000"
+              ? "#aad3df"
+: "#191a1a" // dark grey background for dark mode tiles
           } !important;
         }
         .map-tiles-dark {
