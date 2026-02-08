@@ -271,14 +271,14 @@ export default function LeafletMap({
       const marker = L.marker(mainLocation, { icon });
       
       marker.bindPopup(
-        `<div style="text-align:center;padding:4px;">
-          <div style="font-size:12px;font-weight:600;margin-bottom:4px;">${popupTitle}</div>
+        `<div style="text-align:center;padding:8px;background-color:var(--card);color:var(--card-foreground);border-radius:8px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${popupTitle}</div>
           ${popupSubtitle}
-          <div style="font-size:10px;font-family:monospace;opacity:0.7;margin-bottom:8px;">
+          <div style="font-size:11px;font-family:monospace;opacity:0.9;margin-bottom:8px;">
             ${mainLocation[0].toFixed(5)}, ${mainLocation[1].toFixed(5)}
           </div>
           ${additionalInfo}
-          <button id="copy-loc-btn" style="font-size:11px;padding:4px 10px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:transparent;margin-top:4px;">
+          <button id="copy-loc-btn" style="font-size:11px;padding:4px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--secondary);color:var(--secondary-foreground);margin-top:6px;">
             Copy Link
           </button>
         </div>`
@@ -399,15 +399,7 @@ export default function LeafletMap({
                  mapRef.current.setView(center, zoom, { animate: true });
                }
              }}
-             className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
-             style={{
-               backgroundColor: activeTheme === "light" || activeTheme === "streets" 
-                 ? "rgba(255, 255, 255, 0.9)" 
-                 : "rgba(30, 30, 30, 0.9)",
-               color: activeTheme === "light" || activeTheme === "streets" ? "#000" : "#fff",
-               border: "1px solid rgba(128,128,128,0.2)",
-               backdropFilter: "blur(4px)",
-             }}
+             className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 bg-card/30 backdrop-blur-md border border-border text-card-foreground"
              aria-label="Recenter Map"
            >
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

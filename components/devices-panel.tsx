@@ -102,8 +102,8 @@ export default function DevicesPanel({
                   className={cn(
                     "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-all duration-300",
                     isActive
-                      ? "bg-primary/10 border-l-2 border-l-primary"
-                      : "hover:bg-primary/5 hover:pl-5 border-l-2 border-l-transparent"
+                      ? "bg-card shadow-sm border-l-2 border-l-primary"
+                      : "hover:pl-5 border-l-2 border-l-transparent"
                   )}
                 >
                   <div
@@ -120,7 +120,7 @@ export default function DevicesPanel({
                       {device.name}
                     </div>
                     {isActive && device.lastSeen && (
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs font-medium text-foreground/80 drop-shadow-sm">
                         {timeSince(device.lastSeen)} ago
                       </div>
                     )}

@@ -52,7 +52,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
     error,
     isLoading: isSwrLoading,
     isValidating,
-    mutate,
+    refresh,
   } = useDeviceReports(
     currentDevice,
     settings.apiURL,
@@ -67,6 +67,9 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
     (device: Device) => {
       const isSameDevice = currentDevice?.id === device.id;
       if (isSameDevice) {
+        // Trigger re-validation (throttled by hook)
+        refresh();
+        
         if (guessedLocation) {
           setZoom(16);
           setCurrentPosition([guessedLocation[0], guessedLocation[1]]);
@@ -76,7 +79,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
       }
       setCurrentDevice(device);
     },
-    [currentDevice, mutate, guessedLocation]
+    [currentDevice, refresh, guessedLocation]
   );
 
   // Sync reports
@@ -207,7 +210,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
       {/* Loading Indicator */}
       {isLoading && (
         <div className="absolute bottom-24 md:top-3 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span className="text-sm font-medium text-foreground">
               Loading reports...

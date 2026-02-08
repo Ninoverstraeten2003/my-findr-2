@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTheme } from "next-themes";
+import { cn } from "@/lib/utils";
 
 
 const iconMap: Record<string, LucideIcon> = {
@@ -346,43 +347,103 @@ export default function SettingsView() {
             />
           </div>
           <div className="flex flex-col gap-3">
-            <Label>App Theme</Label>
-            <Select 
-              value={settingsForm.appTheme || "system"} 
-              onValueChange={(value: "light" | "dark" | "system") => {
-                setTheme(value);
-                setSettingsForm({ ...settingsForm, appTheme: value });
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a theme" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="system">System (Auto)</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-3">
-            <Label>Map Theme</Label>
-            <Select
-              value={settingsForm.mapTheme || "system"}
-              onValueChange={(value: any) =>
-                setSettingsForm({ ...settingsForm, mapTheme: value })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a theme" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="system">System (Auto)</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="satellite">Satellite</SelectItem>
-                <SelectItem value="streets">Streets</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Appearance</Label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[
+                {
+                  id: "system",
+                  label: "System",
+                  appTheme: "system",
+                  mapTheme: "system",
+                  previewApp:
+                    "bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700",
+                  previewMap: "bg-zinc-300 dark:bg-zinc-900",
+                },
+                {
+                  id: "light",
+                  label: "Light",
+                  appTheme: "light",
+                  mapTheme: "light",
+                  previewApp: "bg-white border-zinc-200",
+                  previewMap: "bg-[#aad3df]",
+                },
+                {
+                  id: "dark",
+                  label: "Dark",
+                  appTheme: "dark",
+                  mapTheme: "dark",
+                  previewApp: "bg-zinc-950 border-zinc-800",
+                  previewMap: "bg-[#191a1a]",
+                },
+                {
+                  id: "satellite",
+                  label: "Satellite",
+                  appTheme: "dark",
+                  mapTheme: "satellite",
+                  previewApp: "bg-zinc-950 border-zinc-800",
+                  previewMap: "bg-emerald-950/50",
+                },
+                {
+                  id: "streets",
+                  label: "Streets",
+                  appTheme: "light",
+                  mapTheme: "streets",
+                  previewApp: "bg-white border-zinc-200",
+                  previewMap: "bg-orange-50",
+                },
+              ].map((preset) => {
+                const isActive = (settingsForm.mapTheme || "system") === preset.mapTheme;
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      setTheme(preset.appTheme);
+                      const updatedSettings = {
+                        ...settingsForm,
+                        appTheme: preset.appTheme as any,
+                        mapTheme: preset.mapTheme as any,
+                      };
+                      setSettingsForm(updatedSettings);
+                      updateStoredSettings(updatedSettings);
+                    }}
+                    className={cn(
+                      "relative flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all duration-200 text-left overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                      isActive
+                        ? "border-primary bg-primary/5"
+                        : "border-transparent hover:bg-muted/50"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "w-full aspect-[16/10] rounded-lg border shadow-sm overflow-hidden flex",
+                        preset.previewApp
+                      )}
+                    >
+                      {/* Sidebar Mock */}
+                      <div className="w-[30%] h-full border-r border-inherit opacity-40 bg-inherit" />
+                      {/* Main Content Mock */}
+                      <div className="flex-1 h-full flex flex-col">
+                        {/* Header Mock */}
+                        <div className="h-3 border-b border-inherit opacity-30 bg-inherit" />
+                        {/* Map Mock */}
+                        <div className={cn("flex-1 relative", preset.previewMap)}>
+                           {/* Location dot mock */}
+                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary/60 ring-2 ring-background/20" />
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        isActive ? "text-primary" : "text-muted-foreground"
+                      )}
+                    >
+                      {preset.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <Separator />

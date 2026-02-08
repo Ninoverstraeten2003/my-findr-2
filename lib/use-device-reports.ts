@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import useSWR from "swr";
 import { getReportsForDevice } from "./get-reports";
 import type { Device, DeviceReport } from "./types";
@@ -11,7 +12,9 @@ export function useDeviceReports(
   password: string,
   days: number
 ) {
-  return useSWR<DeviceReport[]>(
+  const lastFetchRef = useRef<number>(0);
+
+  const swrResponse = useSWR<DeviceReport[]>(
     device && apiURL ? ["deviceReports", device.id, days, username, password] : null,
     async () => {
       if (!device) throw new Error("Device is required");
@@ -31,6 +34,18 @@ export function useDeviceReports(
         // Retry after 5 seconds.
         setTimeout(() => revalidate({ retryCount }), 5000);
       },
+      onSuccess: () => {
+        lastFetchRef.current = Date.now();
+      },
     }
   );
+
+  const refresh = () => {
+    const now = Date.now();
+    if (now - lastFetchRef.current > 60_000) {
+      swrResponse.mutate();
+    }
+  };
+
+  return { ...swrResponse, refresh };
 }
