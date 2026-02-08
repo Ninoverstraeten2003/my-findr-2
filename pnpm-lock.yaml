@@ -119,9 +119,6 @@ importers:
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
-      leaflet-geosearch:
-        specifier: ^4.2.2
-        version: 4.2.2
       lucide-react:
         specifier: ^0.544.0
         version: 0.544.0(react@19.2.3)
@@ -229,9 +226,6 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
-
-  '@googlemaps/js-api-loader@1.16.10':
-    resolution: {integrity: sha512-c2erv2k7P2ilYzMmtYcMgAR21AULosQuUHJbStnrvRk2dG93k5cqptDrh9A8p+ZNlyhiqEOgHW7N9PAizdUM7Q==}
 
   '@hookform/resolvers@3.10.0':
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
@@ -1710,9 +1704,6 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  leaflet-geosearch@4.2.2:
-    resolution: {integrity: sha512-847zdoX0SJcDCwPmbjO0C8ngPby14bYl7vfY4fLAKLi+AlIa2kWX2FXChu+kwzSQp45IF3buluS4YwbYITGkwA==}
-
   leaflet@1.9.4:
     resolution: {integrity: sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==}
 
@@ -2249,9 +2240,6 @@ snapshots:
       react-dom: 19.2.3(react@19.2.3)
 
   '@floating-ui/utils@0.2.10': {}
-
-  '@googlemaps/js-api-loader@1.16.10':
-    optional: true
 
   '@hookform/resolvers@3.10.0(react-hook-form@7.68.0(react@19.2.3))':
     dependencies:
@@ -3610,11 +3598,6 @@ snapshots:
   jiti@2.6.1: {}
 
   js-tokens@4.0.0: {}
-
-  leaflet-geosearch@4.2.2:
-    optionalDependencies:
-      '@googlemaps/js-api-loader': 1.16.10
-      leaflet: 1.9.4
 
   leaflet@1.9.4: {}
 
