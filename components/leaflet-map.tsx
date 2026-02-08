@@ -331,6 +331,28 @@ export default function LeafletMap({
           70% { transform: scale(3); opacity: 0; }
           100% { transform: scale(3); opacity: 0; }
         }
+        .leaflet-bar a {
+          background-color: ${
+            activeTheme === "light" || activeTheme === "streets" 
+              ? "rgba(255, 255, 255, 0.3)" 
+              : "rgba(0, 0, 0, 0.3)"
+          } !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          color: ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "#000"
+              : "#fff"
+          } !important;
+          border-color: rgba(128, 128, 128, 0.2) !important;
+        }
+        .leaflet-bar a:hover {
+          background-color: ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "rgba(255, 255, 255, 0.8)"
+              : "rgba(0, 0, 0, 0.8)"
+          } !important;
+        }
       `}</style>
       <div ref={containerRef} className="h-full w-full" />
     </>

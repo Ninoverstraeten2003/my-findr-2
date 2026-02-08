@@ -64,7 +64,7 @@ export default function DevicesPanel({
 
   return (
     <div className="absolute top-3 right-3 z-[1000] w-72">
-      <div className="rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-lg overflow-hidden">
+      <div className="rounded-xl border border-border bg-card/30 backdrop-blur-md shadow-lg overflow-hidden">
         {/* Header */}
         <button
           type="button"
@@ -100,10 +100,10 @@ export default function DevicesPanel({
                   variant="ghost"
                   onClick={() => onDeviceChosen(device)}
                   className={cn(
-                    "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-colors",
+                    "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-all duration-300",
                     isActive
                       ? "bg-primary/10 border-l-2 border-l-primary"
-                      : "hover:bg-secondary/40"
+                      : "hover:bg-primary/5 hover:pl-5 border-l-2 border-l-transparent"
                   )}
                 >
                   <div

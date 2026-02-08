@@ -15,7 +15,7 @@ export default function Page() {
   return (
     <div className="flex flex-col h-dvh bg-background">
       {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/80 backdrop-blur-md z-10 shrink-0">
+      <header className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/30 backdrop-blur-md z-10 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
             <Radar className="h-4.5 w-4.5 text-primary" />
