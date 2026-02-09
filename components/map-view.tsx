@@ -76,6 +76,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         }
       } else {
         shouldZoomRef.current = true;
+        setGuessedLocation(undefined);
       }
       setCurrentDevice(device);
     },
@@ -84,13 +85,21 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
 
   // Sync reports
   useEffect(() => {
-    if (reports.length > 0 && currentDevice) {
+    if (!currentDevice) return;
+
+    if (reports.length > 0) {
       setFilterRange([1, reports.length]);
       const lastReport = reports[reports.length - 1];
       currentDevice.lastSeen = lastReport.decrypedPayload.date;
       currentDevice.battery = lastReport.decrypedPayload.battery;
+    } else if (!isLoading) {
+      // No reports found (invalid key or new device)
+      setFilterRange([0, 0]);
+      currentDevice.lastSeen = null;
+      currentDevice.battery = "Unknown";
+      setGuessedLocation(undefined);
     }
-  }, [reports, currentDevice]);
+  }, [reports, currentDevice, isLoading]);
 
   useEffect(() => {
     if (error) {
@@ -253,6 +262,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
                   max={reports.length}
                   step={1}
                   className="flex-1"
+                  color={deviceColor}
                 />
               </div>
             </div>
@@ -279,6 +289,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
                   max={reports.length}
                   step={1}
                   className="w-full"
+                  color={deviceColor}
                 />
               </div>
               <Button

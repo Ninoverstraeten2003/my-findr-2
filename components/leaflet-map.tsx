@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
@@ -104,11 +104,32 @@ export default function LeafletMap({
   }, []);
 
   // Update map view when center/zoom changes
-  useEffect(() => {
-    if (mapRef.current) {
-      mapRef.current.setView(center, zoom, { animate: true, duration: 0.5 });
+  const fitMapToState = useCallback(() => {
+    if (!mapRef.current) return;
+
+    if (showHistory && filteredReports.length > 0) {
+      const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [
+        r.decrypedPayload.location.latitude,
+        r.decrypedPayload.location.longitude,
+      ]);
+
+      const bounds = L.latLngBounds(latlngs);
+
+      mapRef.current.fitBounds(bounds, {
+        padding: [50, 50],
+        animate: true,
+        duration: 0.5,
+        maxZoom: 18,
+      });
+    } else {
+      mapRef.current.setView(center, 18, { animate: true, duration: 0.5 });  
     }
-  }, [center, zoom]);
+  }, [center, showHistory, filteredReports]);
+
+  // Update map view when center/zoom changes
+  useEffect(() => {
+    fitMapToState();
+  }, [fitMapToState, zoom]);
 
   // Handle Map Theme
   useEffect(() => {
@@ -195,17 +216,28 @@ export default function LeafletMap({
           }
         );
 
-        const tooltipContent = `<div style="text-align:center;padding:4px;min-width:100px;">
-          <div style="font-size:12px;font-weight:600;margin-bottom:4px;font-family:var(--font-sans);">
-            ${payload.date.toLocaleDateString()}
+        const tooltipContent = `
+          <div class="map-tooltip-card">
+            <div class="map-tooltip-header">
+              <div>
+                <div class="map-tooltip-date">${payload.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+                <div class="map-tooltip-time">${payload.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+              <div class="map-tooltip-status-dot" style="background-color: ${deviceColor}; box-shadow: 0 0 0 3px ${deviceColor}40;"></div>
+            </div>
+            
+            <div class="map-tooltip-grid">
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Latitude</div>
+                <div class="map-tooltip-value">${location.latitude.toFixed(5)}°</div>
+              </div>
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Longitude</div>
+                <div class="map-tooltip-value">${location.longitude.toFixed(5)}°</div>
+              </div>
+            </div>
           </div>
-          <div style="font-size:11px;opacity:0.9;margin-bottom:2px;font-family:var(--font-sans);">
-            ${payload.date.toLocaleTimeString()}
-          </div>
-          <div style="font-size:10px;font-family:monospace;opacity:0.7;">
-            ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}
-          </div>
-        </div>`;
+        `;
 
         marker.bindTooltip(tooltipContent, {
           direction: "top",
@@ -269,39 +301,6 @@ export default function LeafletMap({
       });
 
       const marker = L.marker(mainLocation, { icon });
-      
-      marker.bindPopup(
-        `<div style="text-align:center;padding:8px;background-color:var(--card);color:var(--card-foreground);border-radius:8px;">
-          <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${popupTitle}</div>
-          ${popupSubtitle}
-          <div style="font-size:11px;font-family:monospace;opacity:0.9;margin-bottom:8px;">
-            ${mainLocation[0].toFixed(5)}, ${mainLocation[1].toFixed(5)}
-          </div>
-          ${additionalInfo}
-          <button id="copy-loc-btn" style="font-size:11px;padding:4px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--secondary);color:var(--secondary-foreground);margin-top:6px;">
-            Copy Link
-          </button>
-        </div>`
-      );
-
-      marker.on("popupopen", () => {
-        setTimeout(() => {
-          const btn = document.getElementById("copy-loc-btn");
-          if (btn) {
-            btn.onclick = () => {
-              if (mainLocation) {
-                 onCopyLocation(mainLocation[0], mainLocation[1]);
-                 // Visual feedback for button
-                 btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-                 setTimeout(() => {
-                    btn.innerHTML = "Copy Link";
-                 }, 2000);
-              }
-            };
-          }
-        }, 0);
-      });
-
       marker.addTo(layerGroup);
     }
   }, [
@@ -314,29 +313,40 @@ export default function LeafletMap({
   ]);
 
 
+  // Calculate the expected center point (either latest device or bounds center)
+  const targetMapCenter = useMemo(() => {
+    if (showHistory && filteredReports.length > 0) {
+      const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [
+        r.decrypedPayload.location.latitude,
+        r.decrypedPayload.location.longitude,
+      ]);
+      const bounds = L.latLngBounds(latlngs);
+      return bounds.getCenter();
+    }
+    return L.latLng(center);
+  }, [showHistory, filteredReports, center]);
+
   // Check if map is centered
   const [isCentered, setIsCentered] = useState(true);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
     const checkCenter = () => {
-      if (!mapRef.current) return;
-      const mapCenter = mapRef.current.getCenter();
-      const targetCenter = L.latLng(center);
-      
+      const mapCenter = map.getCenter();
+
       // Calculate distance in pixels to be zoom-independent for "closeness"
-      const mapPoint = mapRef.current.latLngToContainerPoint(mapCenter);
-      const targetPoint = mapRef.current.latLngToContainerPoint(targetCenter);
+      const mapPoint = map.latLngToContainerPoint(mapCenter);
+      const targetPoint = map.latLngToContainerPoint(targetMapCenter);
       const dist = mapPoint.distanceTo(targetPoint);
-      
+
       setIsCentered(dist < 50); // Threshold of 50 pixels
     };
 
-    const map = mapRef.current;
     map.on("move", checkCenter);
     map.on("moveend", checkCenter);
-    
+
     // Initial check
     checkCenter();
 
@@ -344,8 +354,7 @@ export default function LeafletMap({
       map.off("move", checkCenter);
       map.off("moveend", checkCenter);
     };
-  }, [center]); // Rerun listener setup if center changes so targetCenter is fresh in closure? 
-  // Actually, 'center' is a dep, so yes.
+  }, [targetMapCenter]);
 
   return (
     <>
@@ -387,6 +396,100 @@ export default function LeafletMap({
               : "rgba(0, 0, 0, 0.8)"
           } !important;
         }
+
+        /* Custom Tooltip Styles */
+        .leaflet-tooltip.custom-leaflet-tooltip {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        
+        .leaflet-tooltip.custom-leaflet-tooltip::before {
+          display: none !important;
+        }
+
+        .map-tooltip-card {
+          background-color: ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "rgba(255, 255, 255, 0.75)"
+              : "rgba(20, 20, 20, 0.75)"
+          };
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border-radius: 12px;
+          padding: 16px;
+          min-width: 180px;
+          box-shadow: 0 10px 40px -10px rgba(0,0,0,0.2);
+          border: 1px solid ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "rgba(0, 0, 0, 0.05)"
+              : "rgba(255, 255, 255, 0.1)"
+          };
+          font-family: var(--font-sans, system-ui, sans-serif);
+          color: hsl(var(--foreground));
+        }
+
+        .map-tooltip-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "rgba(0, 0, 0, 0.05)"
+              : "rgba(255, 255, 255, 0.1)"
+          };
+        }
+
+        .map-tooltip-date {
+          font-size: 16px;
+          font-weight: 700;
+          line-height: 1;
+          color: hsl(var(--foreground));
+        }
+
+        .map-tooltip-time {
+          font-size: 12px;
+          color: hsl(var(--muted-foreground));
+          margin-top: 4px;
+          font-weight: 500;
+        }
+
+        .map-tooltip-status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: hsl(var(--primary));
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2);
+        }
+
+        .map-tooltip-grid {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .map-tooltip-item {
+          text-align: left;
+        }
+
+        .map-tooltip-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: hsl(var(--muted-foreground));
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+
+        .map-tooltip-value {
+          font-family: monospace;
+          font-size: 12px;
+          color: hsl(var(--foreground));
+          font-weight: 600;
+        }
       `}</style>
       <div className="relative h-full w-full">
         <div ref={containerRef} className="h-full w-full" />
@@ -394,11 +497,7 @@ export default function LeafletMap({
         {/* Recenter Button */}
         {!isCentered && (
            <button
-             onClick={() => {
-               if (mapRef.current) {
-                 mapRef.current.setView(center, zoom, { animate: true });
-               }
-             }}
+             onClick={fitMapToState}
              className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 bg-card/30 backdrop-blur-md border border-border text-card-foreground"
              aria-label="Recenter Map"
            >

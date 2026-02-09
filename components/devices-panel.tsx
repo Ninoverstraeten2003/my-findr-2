@@ -119,9 +119,19 @@ export default function DevicesPanel({
                     <div className="font-medium text-sm text-card-foreground truncate">
                       {device.name}
                     </div>
-                    {isActive && device.lastSeen && (
+                    {isActive && (
                       <div className="text-xs font-medium text-foreground/80 drop-shadow-sm">
-                        {timeSince(device.lastSeen)} ago
+                        {device.lastSeen ? (
+                          `${timeSince(device.lastSeen)} ago`
+                        ) : isLoading ? (
+                          <span className="text-muted-foreground font-medium">
+                            Loading...
+                          </span>
+                        ) : (
+                          <span className="text-destructive font-semibold">
+                            No Data
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils'
 
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(({ className, orientation = 'horizontal', ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & { color?: string }
+>(({ className, orientation = 'horizontal', color, ...props }, ref) => (
     <SliderPrimitive.Root
       ref={ref}
       orientation={orientation}
@@ -30,6 +30,7 @@ const Slider = React.forwardRef<
             "absolute bg-primary",
             orientation === 'horizontal' ? 'h-full' : 'w-full'
           )}
+          style={color ? { backgroundColor: color } : undefined}
         />
       </SliderPrimitive.Track>
       {/* We only support single thumb for now in this simplified component, or array if passed value is array */}
@@ -37,6 +38,7 @@ const Slider = React.forwardRef<
         <SliderPrimitive.Thumb
           key={i}
           className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          style={color ? { borderColor: color } : undefined}
         />
       ))}
     </SliderPrimitive.Root>
