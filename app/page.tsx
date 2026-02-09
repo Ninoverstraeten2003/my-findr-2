@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Map, Settings, Radar } from "lucide-react";
+import { Map, Settings, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import MapView from "@/components/map-view";
@@ -24,36 +24,53 @@ export default function Page() {
             MyFindr
           </span>
         </div>
-        <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50 border border-border">
+        <div className="flex items-center gap-2">
           <Button
+            variant="outline"
             size="sm"
-            variant="ghost"
-            onClick={() => setView("map")}
-            className={cn(
-              "h-7 px-3 text-xs font-medium rounded-md transition-all",
-              view === "map"
-                ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+            asChild
+            className="h-8 gap-2 bg-background/50 backdrop-blur-sm border-amber-200/20 hover:bg-amber-100/20 hover:text-amber-500 hover:border-amber-200/50 transition-all duration-300"
           >
-            <Map className="h-3.5 w-3.5 mr-1.5" />
-            Map
+            <a
+              href="https://buymeacoffee.com/ninoverstraeten"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Coffee className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Support Me</span>
+            </a>
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setView("settings")}
-            className={cn(
-              "h-7 px-3 text-xs font-medium rounded-md transition-all",
-              view === "settings"
-                ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Settings className="h-3.5 w-3.5 mr-1.5" />
-            Settings
-          </Button>
-        </nav>
+          <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50 border border-border">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setView("map")}
+              className={cn(
+                "h-7 px-3 text-xs font-medium rounded-md transition-all",
+                view === "map"
+                  ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Map className="h-3.5 w-3.5 mr-1.5" />
+              Map
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setView("settings")}
+              className={cn(
+                "h-7 px-3 text-xs font-medium rounded-md transition-all",
+                view === "settings"
+                  ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Settings className="h-3.5 w-3.5 mr-1.5" />
+              Settings
+            </Button>
+          </nav>
+        </div>
       </header>
 
       {/* Content Area */}
