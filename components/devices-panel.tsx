@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MapPin,
   Circle,
@@ -42,6 +42,21 @@ const batteryConfig: Record<BatteryStatus, { icon: LucideIcon; color: string }> 
   Critical: { icon: BatteryWarning, color: "text-red-500" },
   Unknown: { icon: Battery, color: "text-muted-foreground" },
 };
+
+function TimeAgo({ date }: { date: Date | string | number }) {
+  const [time, setTime] = useState(timeSince(date));
+
+  useEffect(() => {
+    const updateTime = () => setTime(timeSince(date));
+    updateTime(); // Initial update
+    
+    // Update every 10 seconds to keep relative time fresh
+    const interval = setInterval(updateTime, 10000);
+    return () => clearInterval(interval);
+  }, [date]);
+
+  return <>{time}</>;
+}
 
 interface DevicesPanelProps {
   devices: Device[];
@@ -91,7 +106,17 @@ export default function DevicesPanel({
             {devices.map((device) => {
               const IconComp = iconMap[device.icon] || MapPin;
               const isActive = currentDevice?.id === device.id;
-              const bat = batteryConfig[device.battery] || batteryConfig.Unknown;
+              
+              // Use currentDevice for dynamic data (battery, lastSeen) to preserve live updates
+              // because device from props might be a fresh object from settings having no live data.
+              const effectiveDevice = isActive && currentDevice ? currentDevice : device;
+              
+              // However, prefer static data (name, color, icon) from the props device 
+              // as that reflects recent settings changes.
+              const battery = effectiveDevice.battery;
+              const lastSeen = effectiveDevice.lastSeen;
+              
+              const bat = batteryConfig[battery] || batteryConfig.Unknown;
               const BatIcon = bat.icon;
 
               return (
@@ -121,8 +146,10 @@ export default function DevicesPanel({
                     </div>
                     {isActive && (
                       <div className="text-xs font-medium text-foreground/80 drop-shadow-sm">
-                        {device.lastSeen ? (
-                          `${timeSince(device.lastSeen)} ago`
+                        {lastSeen ? (
+                          <>
+                            <TimeAgo date={lastSeen} /> ago
+                          </>
                         ) : isLoading ? (
                           <span className="text-muted-foreground font-medium">
                             Loading...

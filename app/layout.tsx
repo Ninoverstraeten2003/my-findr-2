@@ -12,8 +12,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Macless-Haystack Tracker",
-  description: "Track your esp32 or nrf devices with a modern, sleek interface",
+  title: "MyFindr",
+  description: "Track your esp32 or nrf devices with a modern, sleek interface using macless-haystack",
 };
 
 export const viewport: Viewport = {
@@ -34,6 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <meta name="apple-mobile-web-app-title" content="MyFindr" />
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >

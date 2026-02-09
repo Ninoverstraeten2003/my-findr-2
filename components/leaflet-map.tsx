@@ -43,6 +43,7 @@ interface LeafletMapProps {
   showHistory: boolean;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   onCopyLocation: (lat: number, lon: number) => void;
+  isVisible: boolean;
 }
 
 export default function LeafletMap({
@@ -54,6 +55,7 @@ export default function LeafletMap({
   showHistory,
   mapTheme,
   onCopyLocation,
+  isVisible,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -67,6 +69,13 @@ export default function LeafletMap({
   const activeTheme =
     mapTheme === "system" ? (isDark ? "dark" : "light") : mapTheme;
   const useDarkMarkers = activeTheme === "dark" || activeTheme === "satellite";
+
+  // Handle visibility changes
+  useEffect(() => {
+    if (isVisible && mapRef.current) {
+      mapRef.current.invalidateSize();
+    }
+  }, [isVisible]);
 
   // Initialize map once
   useEffect(() => {
@@ -93,6 +102,11 @@ export default function LeafletMap({
 
     mapRef.current = map;
     layerGroupRef.current = layerGroup;
+    
+    // Invalidate size on mount if visible
+    if (isVisible) {
+       map.invalidateSize();
+    }
 
     return () => {
       map.remove();
@@ -106,6 +120,12 @@ export default function LeafletMap({
   // Update map view when center/zoom changes
   const fitMapToState = useCallback(() => {
     if (!mapRef.current) return;
+    
+    // If not visible, we can skip specific bounds calculations, 
+    // but usually setting view is fine. 
+    // However, fitBounds might be weird if map has 0 size.
+    // So better to guard it or invalidateSize first.
+    if (!isVisible) return; 
 
     if (showHistory && filteredReports.length > 0) {
       const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [
@@ -124,12 +144,18 @@ export default function LeafletMap({
     } else {
       mapRef.current.setView(center, 18, { animate: true, duration: 0.5 });  
     }
-  }, [center, showHistory, filteredReports]);
+  }, [center, showHistory, filteredReports, isVisible]);
 
   // Update map view when center/zoom changes
   useEffect(() => {
-    fitMapToState();
-  }, [fitMapToState, zoom]);
+    // We also want to fit map to state when it becomes visible
+    if (isVisible) {
+        // slight delay to ensure invalidateSize happened
+        setTimeout(() => fitMapToState(), 100);
+    } else {
+        fitMapToState();
+    }
+  }, [fitMapToState, zoom, isVisible]);
 
   // Handle Map Theme
   useEffect(() => {

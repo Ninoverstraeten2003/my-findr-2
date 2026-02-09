@@ -10,7 +10,7 @@ import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Download, Copy, Settings, Loader2, Check } from "lucide-react";
+import { Download, Copy, Settings, Loader2, Check, Map as MapIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -27,9 +27,10 @@ const LeafletMap = dynamic(() => import("@/components/leaflet-map"), {
 
 interface MapViewProps {
   onOpenSettings: () => void;
+  isVisible: boolean;
 }
 
-export default function MapView({ onOpenSettings }: MapViewProps) {
+export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const { toast } = useToast();
   const [settings] = useSettings();
   const [currentDevice, setCurrentDevice] = useState<Device>();
@@ -39,9 +40,9 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
   const [zoom, setZoom] = useState(7);
   const [guessedLocation, setGuessedLocation] = useState<[number, number]>();
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
-  const [isCopied, setIsCopied] = useState(false);
   const shouldZoomRef = useRef(false);
 
+  // Missing settings view logic
   const isMissingRequiredSettings =
     settings.apiURL === "" || settings.devices.length === 0;
 
@@ -200,6 +201,7 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
         deviceColor={deviceColor}
         showHistory={showHistory}
         mapTheme={settings.mapTheme || "system"}
+        isVisible={isVisible}
         onCopyLocation={(lat, lon) => {
           const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
           navigator.clipboard.writeText(url);
@@ -336,17 +338,11 @@ export default function MapView({ onOpenSettings }: MapViewProps) {
               className="h-7 w-7 ml-1"
               onClick={() => {
                 const url = `https://www.google.com/maps/search/?api=1&query=${displayLocation.lat},${displayLocation.lon}`;
-                navigator.clipboard.writeText(url);
-                setIsCopied(true);
-                setTimeout(() => setIsCopied(false), 2000);
+                window.open(url, "_blank");
               }}
             >
-              {isCopied ? (
-                <Check className="h-3.5 w-3.5" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              <span className="sr-only">Copy map link</span>
+              <MapIcon className="h-3.5 w-3.5" />
+              <span className="sr-only">Open in Maps</span>
             </Button>
           </div>
         </div>

@@ -17,11 +17,11 @@ export default function Page() {
       {/* Top Navigation Bar */}
       <header className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/30 backdrop-blur-md z-10 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-            <Radar className="h-4.5 w-4.5 text-primary" />
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-lg leading-none pt-0.5">
+            📍
           </div>
           <span className="text-sm font-semibold text-foreground tracking-tight">
-            Macless-Haystack Tracker
+            MyFindr
           </span>
         </div>
         <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50 border border-border">
@@ -58,9 +58,14 @@ export default function Page() {
 
       {/* Content Area */}
       <main className="flex-1 overflow-hidden relative">
-        {view === "map" ? (
-          <MapView onOpenSettings={() => setView("settings")} />
-        ) : (
+        <div className={cn("h-full w-full", view === "map" ? "block" : "hidden")}>
+          <MapView 
+            onOpenSettings={() => setView("settings")} 
+            isVisible={view === "map"}
+          />
+        </div>
+        
+        {view === "settings" && (
           <div className="h-full overflow-y-auto">
             <SettingsView />
           </div>

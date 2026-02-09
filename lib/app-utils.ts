@@ -2,7 +2,7 @@ export function pluralize(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-export function timeSince(date: Date): string {
+export function timeSince(date: Date | string | number): string {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
 
   const intervals: [number, string][] = [

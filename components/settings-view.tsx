@@ -686,7 +686,7 @@ export default function SettingsView() {
         <Button 
           variant="outline" 
           onClick={generateShareLink} 
-          className="flex-1 bg-transparent"
+          className="flex-1 bg-background text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
           disabled={isGeneratingLink}
         >
           {isGeneratingLink ? (
@@ -701,7 +701,7 @@ export default function SettingsView() {
         <Button
           variant="outline"
           onClick={clearSettings}
-          className="flex-1 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10 bg-transparent"
+          className="flex-1 bg-background shadow-sm text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
         >
           {isReset ? (
             <>
