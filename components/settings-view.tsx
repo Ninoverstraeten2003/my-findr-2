@@ -20,10 +20,10 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Save,
   Share2,
   RotateCcw,
   Check,
+  Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTheme } from "next-themes";
-import { cn } from "@/lib/utils";
+import { cn, hexToRgba } from "@/lib/utils";
 
 
 const iconMap: Record<string, LucideIcon> = {
@@ -89,6 +89,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function SettingsView() {
   const { toast } = useToast();
@@ -103,9 +113,12 @@ export default function SettingsView() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isReset, setIsReset] = useState(false);
+  
+  // Confirmation states
+  const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Sync storeSettings on mount
   useEffect(() => {
@@ -152,32 +165,46 @@ export default function SettingsView() {
         });
         return false;
       }
+      
+      const hexRegex = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+      if (!hexRegex.test(device.hexColor)) {
+        toast({
+          title: "Invalid color",
+          description: "Please enter a valid hex color code (e.g., #FF0000)",
+          variant: "destructive",
+        });
+        return false;
+      }
+
       return true;
     },
     [toast]
   );
 
-  const saveSettings = useCallback(() => {
-    if (settingsForm.devices.length === 0) {
-      toast({
-        title: "No devices",
-        description: "At least one device is required",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!settingsForm.apiURL) {
-      toast({
-        title: "Missing API URL",
-        description: "API URL cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-    updateStoredSettings(settingsForm);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
-  }, [settingsForm, updateStoredSettings, toast]);
+
+  // Auto-save connection settings
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Check if values differ from stored settings
+      if (
+        settingsForm.apiURL !== storeSettings.apiURL ||
+        settingsForm.username !== storeSettings.username ||
+        settingsForm.password !== storeSettings.password
+      ) {
+        if (!settingsForm.apiURL) return; // Don't save if API URL is empty
+        updateStoredSettings(settingsForm);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    settingsForm.apiURL, 
+    settingsForm.username, 
+    settingsForm.password, 
+    storeSettings, 
+    updateStoredSettings,
+    settingsForm // Include full form to ensure we save current state
+  ]);
 
   const addDevice = useCallback(
     async (device: Device) => {
@@ -340,6 +367,9 @@ export default function SettingsView() {
               onValueChange={(value) =>
                 setSettingsForm({ ...settingsForm, days: value[0] })
               }
+              onValueCommit={(value) => 
+                updateStoredSettings({ ...settingsForm, days: value[0] })
+              }
               min={1}
               max={7}
               step={1}
@@ -457,9 +487,11 @@ export default function SettingsView() {
             <Switch
               id="showHistory"
               checked={settingsForm.showHistory ?? true}
-              onCheckedChange={(checked) =>
-                setSettingsForm({ ...settingsForm, showHistory: checked })
-              }
+              onCheckedChange={(checked) => {
+                const updated = { ...settingsForm, showHistory: checked };
+                setSettingsForm(updated);
+                updateStoredSettings(updated);
+              }}
             />
           </div>
         </CardContent>
@@ -491,6 +523,12 @@ export default function SettingsView() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          <div className="flex gap-2 items-start rounded-md bg-primary/5 p-3 text-xs text-muted-foreground border border-primary/10">
+            <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+            <p>
+              Devices are tracked for a maximum of 7 days and each key can hold a maximum of 20 reports due to Apple server limitations.
+            </p>
+          </div>
           {settingsForm.devices.length === 0 && !showDeviceForm && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               No devices added yet. Click Add to get started.
@@ -502,11 +540,15 @@ export default function SettingsView() {
             return (
               <div
                 key={device.id}
-                className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border"
+                className="flex items-center gap-3 p-3 rounded-lg border transition-all hover:bg-opacity-80"
+                style={{
+                  backgroundColor: hexToRgba(device.hexColor, 0.03),
+                  borderColor: hexToRgba(device.hexColor, 0.2),
+                }}
               >
                 <div
                   className="flex items-center justify-center w-9 h-9 rounded-md"
-                  style={{ backgroundColor: device.hexColor + "22" }}
+                  style={{ backgroundColor: hexToRgba(device.hexColor, 0.13) }}
                 >
                   <IconComp
                     className="h-4 w-4"
@@ -532,7 +574,7 @@ export default function SettingsView() {
                     size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => removeDevice(device)}
+                    onClick={() => setDeviceToDelete(device)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span className="sr-only">Remove device</span>
@@ -666,23 +708,7 @@ export default function SettingsView() {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <Button 
-          onClick={saveSettings} 
-          className="flex-1 transition-all duration-200"
-          variant={isSaved ? "outline" : "default"}
-        >
-          {isSaved ? (
-            <>
-              <Check className="h-4 w-4 mr-1.5" />
-              Saved!
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-1.5" />
-              Save Settings
-            </>
-          )}
-        </Button>
+
         <Button 
           variant="outline" 
           onClick={generateShareLink} 
@@ -700,7 +726,7 @@ export default function SettingsView() {
         </Button>
         <Button
           variant="outline"
-          onClick={clearSettings}
+          onClick={() => setConfirmReset(true)}
           className="flex-1 bg-background shadow-sm text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
         >
           {isReset ? (
@@ -759,6 +785,62 @@ export default function SettingsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Device Delete Confirmation */}
+      <AlertDialog
+        open={!!deviceToDelete}
+        onOpenChange={(open) => !open && setDeviceToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deviceToDelete?.name}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deviceToDelete) {
+                  removeDevice(deviceToDelete);
+                  setDeviceToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Settings Confirmation */}
+      <AlertDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset all settings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all your devices and reset your configuration to default. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                clearSettings();
+                setConfirmReset(false);
+              }}
+            >
+              Reset Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
