@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Map, Settings, Coffee } from "lucide-react";
+import { Map, Settings, Coffee, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import MapView from "@/components/map-view";
@@ -29,7 +29,7 @@ export default function Page() {
             variant="outline"
             size="sm"
             asChild
-            className="h-8 gap-2 bg-background/50 backdrop-blur-sm border-amber-200/20 hover:bg-amber-100/20 hover:text-amber-500 hover:border-amber-200/50 transition-all duration-300"
+            className="h-8 gap-2 bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-300"
           >
             <a
               href="https://buymeacoffee.com/ninoverstraeten"
@@ -38,6 +38,21 @@ export default function Page() {
             >
               <Coffee className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Support Me</span>
+            </a>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="h-8 gap-2 bg-secondary/50 border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-300"
+          >
+            <a
+              href="https://github.com/Ninoverstraeten2003/my-findr-2"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Github className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">GitHub</span>
             </a>
           </Button>
           <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary/50 border border-border">
