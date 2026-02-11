@@ -63,7 +63,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     settings.password,
     settings.days,
     settings.usePoller,
-    settings.pollerApiKey
+    settings.pollerApiKey,
+    settings.pollerTier
   );
 
   const reports = reportsData || EMPTY_REPORTS;

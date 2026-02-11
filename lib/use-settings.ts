@@ -14,6 +14,7 @@ export const defaultSettings: AppSettings = {
   mapTheme: "system",
   appTheme: "system",
   usePoller: false,
+  pollerTier: "free",
   pollerApiKey: "",
   devices: [],
 };

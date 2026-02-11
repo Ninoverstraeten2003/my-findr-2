@@ -355,7 +355,8 @@ export default function SettingsView() {
         headers.Authorization = "Basic " + btoa(`${settingsForm.username}:${settingsForm.password}`);
       }
 
-      const response = await fetch("https://findr.ninoverstraeten.com/api/keys?tier=free", {
+      const tier = settingsForm.pollerTier || "free";
+      const response = await fetch(`https://findr.ninoverstraeten.com/api/keys?tier=${tier}`, {
         method: "POST"
       });
 
@@ -382,7 +383,7 @@ export default function SettingsView() {
     } finally {
       setIsGeneratingKey(false);
     }
-  }, [settingsForm.username, settingsForm.password, toast]);
+  }, [settingsForm.username, settingsForm.password, settingsForm.pollerTier, toast]);
 
   const copyPollerCommand = useCallback(() => {
     const hashedKeys = settingsForm.devices
@@ -390,7 +391,7 @@ export default function SettingsView() {
       .map(d => d.advertismentKey)
       .join(",");
       
-    const url = settingsForm.apiURL ? settingsForm.apiURL.replace(/\/+$/, "") : "http://localhost:8082";
+    const url = settingsForm.apiURL ? settingsForm.apiURL.replace(/\/+$/, "") : "http://localhost:8080";
     const apiKey = pollerApiKey || 'YOUR_API_KEY';
     
     let command = `docker run -d \\
@@ -411,7 +412,7 @@ export default function SettingsView() {
   --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
   --api-key "${apiKey}" \\
   --hashed-keys "${hashedKeys}" \\
-  --poll-interval 900`;
+  --poll-interval ${settingsForm.pollerTier === 'unlimited' ? 60 : settingsForm.pollerTier === 'pro' ? 300 : 900}`;
 
     navigator.clipboard.writeText(command);
     setIsCommandCopied(true);
@@ -453,11 +454,44 @@ export default function SettingsView() {
         <CardContent className="flex flex-col gap-4">
           {settingsForm.usePoller ? (
             <div className="flex flex-col gap-4">
-              <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-sm text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-900">
-                <p>
-                  Using the Findr Poller service. Reports will be fetched via 
-                  <code className="mx-1 px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">findr.ninoverstraeten.com</code>
-                  instead of your direct connection.
+              <div className="rounded-md bg-primary/5 p-3 text-xs text-muted-foreground border border-primary/10 flex gap-3">
+                <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                <div className="flex-1">
+                  <p>
+                    Using the Findr Poller service. Reports will be fetched via 
+                    <code className="mx-1 px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">findr.ninoverstraeten.com</code>
+                    instead of your direct connection.
+                  </p>
+                  <div className="mt-2 text-xs opacity-80 border-t border-blue-200 dark:border-blue-900 pt-2">
+                    <p><strong>Connection Settings used:</strong></p>
+                    <p>URL: {settingsForm.apiURL || "http://localhost:8080"}</p>
+                    <p>User: {settingsForm.username || "(none)"}</p>
+                    <p>Pass: {settingsForm.password ? "******" : "(none)"}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="pollerTier">Poller Tier</Label>
+                <Select
+                  value={settingsForm.pollerTier || "free"}
+                  onValueChange={(value: "free" | "pro" | "unlimited") => {
+                    const updated = { ...settingsForm, pollerTier: value };
+                    setSettingsForm(updated);
+                    updateStoredSettings(updated);
+                  }}
+                >
+                  <SelectTrigger id="pollerTier">
+                    <SelectValue placeholder="Select a tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free (15 min interval)</SelectItem>
+                    <SelectItem value="pro">Pro (5 min interval)</SelectItem>
+                    <SelectItem value="unlimited">Unlimited (1 min interval)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select your subscription tier to set the correct polling interval.
                 </p>
               </div>
 
@@ -496,11 +530,11 @@ export default function SettingsView() {
                      <pre className="p-4 rounded-lg bg-muted font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
                        {`docker run -d \\
   ninoverstraeten/my-findr-poller \\
-  --macless-url "${settingsForm.apiURL || 'http://localhost:8082'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
+  --macless-url "${settingsForm.apiURL || 'http://localhost:8080'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
   --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
   --api-key "${settingsForm.pollerApiKey}" \\
   --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
-  --poll-interval 900`}
+  --poll-interval ${settingsForm.pollerTier === 'unlimited' ? 60 : settingsForm.pollerTier === 'pro' ? 300 : 900}`}
                      </pre>
                      <Button
                        size="icon"
@@ -509,11 +543,11 @@ export default function SettingsView() {
                        onClick={() => {
                           const command = `docker run -d \\
   ninoverstraeten/my-findr-poller \\
-  --macless-url "${settingsForm.apiURL || 'http://localhost:8082'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
+  --macless-url "${settingsForm.apiURL || 'http://localhost:8080'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
   --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
   --api-key "${settingsForm.pollerApiKey}" \\
   --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
-  --poll-interval 900`;
+  --poll-interval ${settingsForm.pollerTier === 'unlimited' ? 60 : settingsForm.pollerTier === 'pro' ? 300 : 900}`;
                           navigator.clipboard.writeText(command);
                           setIsCommandCopied(true);
                           setTimeout(() => setIsCommandCopied(false), 2000);
@@ -617,8 +651,14 @@ export default function SettingsView() {
               min={1}
               max={7}
               step={1}
-              className="w-full"
+              disabled={settingsForm.usePoller}
+              className={cn("w-full", settingsForm.usePoller && "opacity-50 grayscale cursor-not-allowed")}
             />
+            {settingsForm.usePoller && (
+              <p className="text-xs text-muted-foreground mt-1">
+                History length is managed by the Poller service based on your tier.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-3">
             <Label>Appearance</Label>

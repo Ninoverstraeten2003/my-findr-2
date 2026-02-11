@@ -40,6 +40,7 @@ export interface AppSettings {
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   appTheme: "system" | "light" | "dark";
   usePoller: boolean;
+  pollerTier: "free" | "pro" | "unlimited";
   pollerApiKey: string;
   devices: Device[];
 }

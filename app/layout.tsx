@@ -26,6 +26,7 @@ export const viewport: Viewport = {
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeSync } from "@/components/theme-sync";
+import { QueryProvider } from "@/components/query-provider";
 
 export default function RootLayout({
   children,
@@ -44,9 +45,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <ThemeSync />
-          <Toaster />
+          <QueryProvider>
+            {children}
+            <ThemeSync />
+            <Toaster />
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>
