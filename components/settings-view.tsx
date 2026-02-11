@@ -8,6 +8,7 @@ import {
   Star,
   Flower2,
   Car,
+  Loader2,
   Bus,
   User,
   Camera,
@@ -364,7 +365,9 @@ export default function SettingsView() {
 
       const data = await response.json();
       if (data.api_key) {
-        setPollerApiKey(data.api_key);
+        const updated = { ...settingsForm, pollerApiKey: data.api_key };
+        setSettingsForm(updated);
+        updateStoredSettings(updated);
         toast({ title: "API Key generated successfully" });
       } else {
         throw new Error("No API key in response");
@@ -391,7 +394,6 @@ export default function SettingsView() {
     const apiKey = pollerApiKey || 'YOUR_API_KEY';
     
     let command = `docker run -d \\
-  --network host \\
   ninoverstraeten/my-findr-poller \\
   --macless-url "${url}" \\`;
 
@@ -430,70 +432,164 @@ export default function SettingsView() {
       {/* Connection Settings */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Connection</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="apiUrl">API URL</Label>
-            <Input
-              id="apiUrl"
-              value={settingsForm.apiURL}
-              placeholder="https://your-api.example.com"
-              onChange={(e) =>
-                setSettingsForm({ ...settingsForm, apiURL: e.target.value })
-              }
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={settingsForm.username}
-                placeholder="username"
-                onChange={(e) =>
-                  setSettingsForm({
-                    ...settingsForm,
-                    username: e.target.value,
-                  })
-                }
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Connection</CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="usePoller" className="text-sm font-normal text-muted-foreground">
+                Use Poller
+              </Label>
+              <Switch
+                id="usePoller"
+                checked={settingsForm.usePoller}
+                onCheckedChange={(checked) => {
+                  const updated = { ...settingsForm, usePoller: checked };
+                  setSettingsForm(updated);
+                  updateStoredSettings(updated);
+                }}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={settingsForm.password}
-                  placeholder="password"
-                  onChange={(e) =>
-                    setSettingsForm({
-                      ...settingsForm,
-                      password: e.target.value,
-                    })
-                  }
-                  className="pr-10"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="sr-only">
-                    {showPassword ? "Hide password" : "Show password"}
-                  </span>
-                </Button>
-              </div>
-            </div>
           </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {settingsForm.usePoller ? (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-sm text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-900">
+                <p>
+                  Using the Findr Poller service. Reports will be fetched via 
+                  <code className="mx-1 px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">findr.ninoverstraeten.com</code>
+                  instead of your direct connection.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="pollerApiKey">Poller API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="pollerApiKey"
+                    value={settingsForm.pollerApiKey}
+                    placeholder="Enter your API Key"
+                    onChange={(e) => {
+                      const updated = { ...settingsForm, pollerApiKey: e.target.value };
+                      setSettingsForm(updated);
+                      updateStoredSettings(updated);
+                    }}
+                    type="password"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={generateApiKey}
+                    disabled={isGeneratingKey}
+                  >
+                    {isGeneratingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Generate
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Generate a key or paste one from your Poller configuration.
+                </p>
+              </div>
+              
+              {settingsForm.pollerApiKey && (
+                 <div className="flex flex-col gap-2 mt-2">
+                   <Label>Poller Docker Command</Label>
+                   <div className="relative">
+                     <pre className="p-4 rounded-lg bg-muted font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
+                       {`docker run -d \\
+  ninoverstraeten/my-findr-poller \\
+  --macless-url "${settingsForm.apiURL || 'http://localhost:8082'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
+  --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
+  --api-key "${settingsForm.pollerApiKey}" \\
+  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
+  --poll-interval 900`}
+                     </pre>
+                     <Button
+                       size="icon"
+                       variant="ghost"
+                       className="absolute top-2 right-2 h-8 w-8 bg-background/50 backdrop-blur-sm hover:bg-background/80"
+                       onClick={() => {
+                          const command = `docker run -d \\
+  ninoverstraeten/my-findr-poller \\
+  --macless-url "${settingsForm.apiURL || 'http://localhost:8082'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
+  --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
+  --api-key "${settingsForm.pollerApiKey}" \\
+  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
+  --poll-interval 900`;
+                          navigator.clipboard.writeText(command);
+                          setIsCommandCopied(true);
+                          setTimeout(() => setIsCommandCopied(false), 2000);
+                       }}
+                     >
+                       {isCommandCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                     </Button>
+                   </div>
+                 </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="apiUrl">API URL</Label>
+                <Input
+                  id="apiUrl"
+                  value={settingsForm.apiURL}
+                  placeholder="https://your-api.example.com"
+                  onChange={(e) =>
+                    setSettingsForm({ ...settingsForm, apiURL: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    value={settingsForm.username}
+                    placeholder="username"
+                    onChange={(e) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        username: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={settingsForm.password}
+                      placeholder="password"
+                      onChange={(e) =>
+                        setSettingsForm({
+                          ...settingsForm,
+                          password: e.target.value,
+                        })
+                      }
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="sr-only">
+                        {showPassword ? "Hide password" : "Show password"}
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -851,61 +947,6 @@ export default function SettingsView() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Poller Configuration */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Poller Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-
-
-          <div className="flex flex-col gap-2">
-            <Label>API Key</Label>
-            <div className="flex gap-2">
-              <Input
-                readOnly
-                value={pollerApiKey || ""}
-                placeholder="Generate an API key to seeing it here"
-                className="font-mono text-sm"
-              />
-              <Button onClick={generateApiKey} disabled={isGeneratingKey}>
-                {isGeneratingKey ? "Generating..." : "Generate Key"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Docker Command</Label>
-            </div>
-            <div className="relative rounded-md bg-muted p-4 pr-12 overflow-x-auto">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 h-8 w-8 hover:bg-background/50"
-                onClick={copyPollerCommand}
-              >
-                {isCommandCopied ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="sr-only">Copy Command</span>
-              </Button>
-              <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-{`docker run -d \\
-  --network host \\
-  ninoverstraeten/my-findr-poller \\
-  --macless-url "${settingsForm.apiURL ? settingsForm.apiURL.replace(/\/+$/, "") : "http://localhost:8082"}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ""}${settingsForm.password ? `\n  --macless-pass "********" \\` : ""}
-  --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
-  --api-key "${pollerApiKey || 'YOUR_API_KEY'}" \\
-  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(",")}" \\
-  --poll-interval 900`}</pre>
-            </div>
-          </div>
         </CardContent>
       </Card>
 

@@ -39,6 +39,8 @@ export interface AppSettings {
   showHistory: boolean;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   appTheme: "system" | "light" | "dark";
+  usePoller: boolean;
+  pollerApiKey: string;
   devices: Device[];
 }
 

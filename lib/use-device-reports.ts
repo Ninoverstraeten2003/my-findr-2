@@ -10,27 +10,46 @@ export function useDeviceReports(
   apiURL: string,
   username: string,
   password: string,
-  days: number
+  days: number,
+  usePoller: boolean,
+  pollerApiKey: string
 ) {
   const lastFetchRef = useRef<number>(0);
 
   const swrResponse = useSWR<DeviceReport[]>(
-    device && apiURL ? ["deviceReports", device.id, days, username, password] : null,
+    device && (apiURL || (usePoller && pollerApiKey))
+      ? ["deviceReports", device.id, days, username, password, usePoller, pollerApiKey]
+      : null,
     async () => {
       if (!device) throw new Error("Device is required");
-      return getReportsForDevice(device, apiURL, username, password, days);
+      return getReportsForDevice(
+        device,
+        apiURL,
+        username,
+        password,
+        days,
+        usePoller,
+        pollerApiKey
+      );
     },
     {
       revalidateOnFocus: false,
       dedupingInterval: 60_000,
       refreshInterval: 300_000,
+      shouldRetryOnError: true,
+      errorRetryCount: 3,
       onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
         // Never retry on 404.
         if (error.status === 404) return;
         // Never retry on 401/403 (Auth).
         if (error.status === 401 || error.status === 403) return;
-        // Only retry up to 10 times.
-        if (retryCount >= 10) return;
+
+        // If using Poller and we get a network error (often status undefined or 0 for CORS), stop.
+        // It's likely a misconfiguration or CORS issue that won't resolve itself quickly.
+        if (usePoller && (!error.status || error.status === 0)) return;
+
+        // Only retry up to 3 times.
+        if (retryCount >= 3) return;
         // Retry after 5 seconds.
         setTimeout(() => revalidate({ retryCount }), 5000);
       },

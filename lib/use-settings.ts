@@ -13,6 +13,8 @@ export const defaultSettings: AppSettings = {
   showHistory: true,
   mapTheme: "system",
   appTheme: "system",
+  usePoller: false,
+  pollerApiKey: "",
   devices: [],
 };
 

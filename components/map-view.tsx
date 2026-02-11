@@ -30,6 +30,8 @@ interface MapViewProps {
   isVisible: boolean;
 }
 
+const EMPTY_REPORTS: any[] = [];
+
 export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const { toast } = useToast();
   const [settings] = useSettings();
@@ -49,7 +51,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const showHistory = settings.showHistory !== false;
 
   const {
-    data: reports = [],
+    data: reportsData,
     error,
     isLoading: isSwrLoading,
     isValidating,
@@ -59,8 +61,12 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     settings.apiURL,
     settings.username,
     settings.password,
-    settings.days
+    settings.days,
+    settings.usePoller,
+    settings.pollerApiKey
   );
+
+  const reports = reportsData || EMPTY_REPORTS;
 
   const isLoading = isSwrLoading || isValidating;
 

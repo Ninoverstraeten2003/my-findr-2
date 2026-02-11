@@ -6,17 +6,25 @@ export async function getReportsForDevice(
   apiURL: string,
   username: string,
   password: string,
-  days = 7
+  days = 7,
+  usePoller: boolean = false,
+  pollerApiKey: string = ""
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
-  const reports = await fetchDevicesReports(
-    [device.advertismentKey],
-    days,
-    apiURL,
-    username,
-    password
-  );
+  let reports: DeviceReport[] = [];
+
+  if (usePoller && pollerApiKey) {
+    reports = await fetchPollerReports(device.advertismentKey, pollerApiKey);
+  } else {
+    reports = await fetchDevicesReports(
+      [device.advertismentKey],
+      days,
+      apiURL,
+      username,
+      password
+    );
+  }
 
   const decryptedReports: DeviceReport[] = [];
 
@@ -85,4 +93,56 @@ async function fetchDevicesReports(
     }
     return response.results as DeviceReport[];
   });
+}
+
+async function fetchPollerReports(
+  advertisementKey: string,
+  apiKey: string
+): Promise<DeviceReport[]> {
+  // URL Encode the key just in case, though it usually is safebase64 or similar
+  const encodedKey = encodeURIComponent(advertisementKey);
+  const url = `https://findr.ninoverstraeten.com/api/reports/${encodedKey}`;
+
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "X-API-Key": apiKey,
+      },
+    });
+  } catch (err) {
+    // TypeError usually means network error or CORS block
+    if (err instanceof TypeError) {
+      const error: any = new Error("Network or CORS error connecting to Poller");
+      error.status = 0;
+      throw error;
+    }
+    throw err;
+  }
+
+  if (!response.ok) {
+    const error: any = new Error("Poller network response was not ok");
+    error.status = response.status;
+    throw error;
+  }
+
+  const data = await response.json();
+  
+  // Map Poller response to DeviceReport[]
+  // Poller response format:
+  // [
+  //   {
+  //     "id": 1,
+  //     "hashed_public_key": "...",
+  //     "timestamp": 1700000000,
+  //     "encrypted_report": "SGVsbG8=",
+  //     "received_at": "..."
+  //   }, ...
+  // ]
+  
+  return data.map((item: any) => ({
+    id: String(item.id),
+    payload: item.encrypted_report,
+    // decrypedPayload will be added by the main function
+  })) as DeviceReport[];
 }
