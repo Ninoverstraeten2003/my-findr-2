@@ -8,22 +8,41 @@ export async function getReportsForDevice(
   password: string,
   days = 7,
   usePoller: boolean = false,
-  pollerApiKey: string = ""
+  pollerApiKey: string = "",
+  showHistory: boolean = true
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
-  let reports: DeviceReport[] = [];
+  // 1. Always fetch from "Haystack" (The direct API/Backend)
+  let reports = await fetchDevicesReports(
+    [device.advertismentKey],
+    days,
+    apiURL,
+    username,
+    password
+  );
 
-  if (usePoller && pollerApiKey) {
-    reports = await fetchPollerReports(device.advertismentKey, pollerApiKey);
-  } else {
-    reports = await fetchDevicesReports(
-      [device.advertismentKey],
-      days,
-      apiURL,
-      username,
-      password
-    );
+  // 2. If Poller is enabled AND History is enabled, fetch from Poller Service and merge
+  if (usePoller && pollerApiKey && showHistory) {
+    try {
+      const pollerReports = await fetchPollerReports(
+        device.advertismentKey,
+        pollerApiKey
+      );
+
+      // Merge: deduplicate by ID
+      const reportMap = new Map<string, DeviceReport>();
+
+      // Haystack reports first
+      reports.forEach((r) => reportMap.set(r.id, r));
+      // Poller reports second (overwrite or add new)
+      pollerReports.forEach((r) => reportMap.set(r.id, r));
+
+      reports = Array.from(reportMap.values());
+    } catch (error) {
+      console.error("Failed to fetch/merge poller reports:", error);
+      // Fallback to just haystack reports if poller fails
+    }
   }
 
   const decryptedReports: DeviceReport[] = [];

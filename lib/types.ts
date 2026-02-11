@@ -45,3 +45,10 @@ export interface AppSettings {
   devices: Device[];
 }
 
+export type TierType = "free" | "pro" | "unlimited";
+
+export interface TierLimits {
+  maxDevices: number;
+  maxIngestionsPerHour: number;
+  retentionDays: number;
+}

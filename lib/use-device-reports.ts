@@ -12,7 +12,8 @@ export function useDeviceReports(
   days: number,
   usePoller: boolean,
   pollerApiKey: string,
-  pollerTier: "free" | "pro" | "unlimited" = "free"
+  pollerTier: "free" | "pro" | "unlimited" = "free",
+  showHistory: boolean
 ) {
   const queryKey = [
     "deviceReports",
@@ -23,15 +24,12 @@ export function useDeviceReports(
     usePoller,
     pollerApiKey,
     pollerTier,
+    showHistory,
   ];
 
-  const staleTime = usePoller
-    ? pollerTier === "unlimited"
-      ? 60_000
-      : pollerTier === "pro"
-      ? 300_000
-      : 900_000
-    : 60_000;
+  // If using Poller, always poll every 60s (1 minute).
+  // Otherwise default to 60s for standard backend polling.
+  const staleTime = 60_000;
 
   const query = useQuery({
     queryKey,
@@ -44,7 +42,8 @@ export function useDeviceReports(
         password,
         days,
         usePoller,
-        pollerApiKey
+        pollerApiKey,
+        showHistory
       );
     },
     enabled: !!device && (!!apiURL || (usePoller && !!pollerApiKey)),

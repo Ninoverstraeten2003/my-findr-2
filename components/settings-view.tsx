@@ -41,6 +41,7 @@ import { Separator } from "@/components/ui/separator";
 import { useSettings, defaultSettings } from "@/lib/use-settings";
 import { getAdvertisementKey } from "@/lib/decrypt-payload";
 import { pluralize } from "@/lib/app-utils";
+import { TIER_LIMITS } from "@/lib/config";
 import type { Device, AppSettings } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -485,13 +486,19 @@ export default function SettingsView() {
                     <SelectValue placeholder="Select a tier" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="free">Free (15 min interval)</SelectItem>
-                    <SelectItem value="pro">Pro (5 min interval)</SelectItem>
-                    <SelectItem value="unlimited">Unlimited (1 min interval)</SelectItem>
+                    <SelectItem value="free">
+                      Free ({TIER_LIMITS.free.maxDevices} Devices, {TIER_LIMITS.free.retentionDays} Days)
+                    </SelectItem>
+                    <SelectItem value="pro">
+                      Pro ({TIER_LIMITS.pro.maxDevices} Devices, {TIER_LIMITS.pro.retentionDays} Days)
+                    </SelectItem>
+                    <SelectItem value="unlimited">
+                      Unlimited ({TIER_LIMITS.unlimited.maxDevices} Devices, {TIER_LIMITS.unlimited.retentionDays} Days)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Select your subscription tier to set the correct polling interval.
+                  Select your subscription tier to set the correct limits.
                 </p>
               </div>
 
@@ -533,8 +540,7 @@ export default function SettingsView() {
   --macless-url "${settingsForm.apiURL || 'http://localhost:8080'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
   --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
   --api-key "${settingsForm.pollerApiKey}" \\
-  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
-  --poll-interval ${settingsForm.pollerTier === 'unlimited' ? 60 : settingsForm.pollerTier === 'pro' ? 300 : 900}`}
+  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}"`}
                      </pre>
                      <Button
                        size="icon"
@@ -546,8 +552,7 @@ export default function SettingsView() {
   --macless-url "${settingsForm.apiURL || 'http://localhost:8080'}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ''}${settingsForm.password ? `\n  --macless-pass "${settingsForm.password}" \\` : ''}
   --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
   --api-key "${settingsForm.pollerApiKey}" \\
-  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}" \\
-  --poll-interval ${settingsForm.pollerTier === 'unlimited' ? 60 : settingsForm.pollerTier === 'pro' ? 300 : 900}`;
+  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(',')}"`;
                           navigator.clipboard.writeText(command);
                           setIsCommandCopied(true);
                           setTimeout(() => setIsCommandCopied(false), 2000);
