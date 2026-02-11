@@ -24,6 +24,9 @@ import {
   RotateCcw,
   Check,
   Info,
+  Copy,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -120,6 +123,14 @@ export default function SettingsView() {
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // Poller state
+
+  const [pollerApiKey, setPollerApiKey] = useState<string | null>(null);
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+  const [isKeyCopied, setIsKeyCopied] = useState(false);
+  const [isCommandCopied, setIsCommandCopied] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
   // Sync storeSettings on mount
   useEffect(() => {
     setSettingsForm(storeSettings);
@@ -206,11 +217,50 @@ export default function SettingsView() {
     settingsForm // Include full form to ensure we save current state
   ]);
 
+  // Auto-fill advertisement keys for existing devices
+  useEffect(() => {
+    const fillKeys = async () => {
+      let hasUpdates = false;
+      const updatedDevices = await Promise.all(
+        settingsForm.devices.map(async (device) => {
+          if (device.privateKey && !device.advertismentKey) {
+            try {
+              const key = await getAdvertisementKey(device.privateKey);
+              if (key) {
+                hasUpdates = true;
+                return { ...device, advertismentKey: key };
+              }
+            } catch (e) {
+              console.error("Failed to generate key for device", device.name, e);
+            }
+          }
+          return device;
+        })
+      );
+
+      if (hasUpdates) {
+        const updated = { ...settingsForm, devices: updatedDevices };
+        setSettingsForm(updated);
+        updateStoredSettings(updated);
+      }
+    };
+    
+    fillKeys();
+  }, [settingsForm.devices, updateStoredSettings, settingsForm]);
+
   const addDevice = useCallback(
     async (device: Device) => {
       if (!(await validateDevice(device))) return;
-      device.id = uuidv4();
-      const updatedDevices = [...settingsForm.devices, device];
+      
+      const newDevice = { ...device };
+      try {
+        newDevice.advertismentKey = await getAdvertisementKey(newDevice.privateKey);
+      } catch {
+        // Should rely on validateDevice to catch errors, but safe fallback
+      }
+      
+      newDevice.id = uuidv4();
+      const updatedDevices = [...settingsForm.devices, newDevice];
       const updated = { ...settingsForm, devices: updatedDevices };
       setSettingsForm(updated);
       updateStoredSettings(updated);
@@ -224,8 +274,16 @@ export default function SettingsView() {
   const updateDevice = useCallback(
     async (device: Device) => {
       if (!(await validateDevice(device))) return;
+
+      const updatedDevice = { ...device };
+      try {
+        updatedDevice.advertismentKey = await getAdvertisementKey(updatedDevice.privateKey);
+      } catch {
+        // ignore
+      }
+
       const updatedDevices = settingsForm.devices.map((d) =>
-        d.id === device.id ? device : d
+        d.id === updatedDevice.id ? updatedDevice : d
       );
       const updated = { ...settingsForm, devices: updatedDevices };
       setSettingsForm(updated);
@@ -287,6 +345,77 @@ export default function SettingsView() {
     setTimeout(() => setIsCopied(false), 2000);
   }, [shareUrl]);
 
+  const generateApiKey = useCallback(async () => {
+    setIsGeneratingKey(true);
+    try {
+      const headers: HeadersInit = {};
+      
+      if (settingsForm.username && settingsForm.password) {
+        headers.Authorization = "Basic " + btoa(`${settingsForm.username}:${settingsForm.password}`);
+      }
+
+      const response = await fetch("https://findr.ninoverstraeten.com/api/keys?tier=free", {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.api_key) {
+        setPollerApiKey(data.api_key);
+        toast({ title: "API Key generated successfully" });
+      } else {
+        throw new Error("No API key in response");
+      }
+    } catch (error) {
+      console.error("Failed to generate API key:", error);
+      toast({
+        title: "Generation failed",
+        description: "Could not generate API key. Check your connection settings and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingKey(false);
+    }
+  }, [settingsForm.username, settingsForm.password, toast]);
+
+  const copyPollerCommand = useCallback(() => {
+    const hashedKeys = settingsForm.devices
+      .filter(d => d.advertismentKey)
+      .map(d => d.advertismentKey)
+      .join(",");
+      
+    const url = settingsForm.apiURL ? settingsForm.apiURL.replace(/\/+$/, "") : "http://localhost:8082";
+    const apiKey = pollerApiKey || 'YOUR_API_KEY';
+    
+    let command = `docker run -d \\
+  --network host \\
+  ninoverstraeten/my-findr-poller \\
+  --macless-url "${url}" \\`;
+
+    if (settingsForm.username) {
+        command += `
+  --macless-user "${settingsForm.username}" \\`;
+    }
+    
+    if (settingsForm.password) {
+        command += `
+  --macless-pass "${settingsForm.password}" \\`;
+    }
+
+    command += `
+  --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
+  --api-key "${apiKey}" \\
+  --hashed-keys "${hashedKeys}" \\
+  --poll-interval 900`;
+
+    navigator.clipboard.writeText(command);
+    setIsCommandCopied(true);
+    setTimeout(() => setIsCommandCopied(false), 2000);
+  }, [settingsForm.devices, settingsForm.apiURL, settingsForm.username, settingsForm.password, pollerApiKey]);
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8 max-w-2xl mx-auto">
       <div>
@@ -332,18 +461,37 @@ export default function SettingsView() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={settingsForm.password}
-                placeholder="password"
-                onChange={(e) =>
-                  setSettingsForm({
-                    ...settingsForm,
-                    password: e.target.value,
-                  })
-                }
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={settingsForm.password}
+                  placeholder="password"
+                  onChange={(e) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      password: e.target.value,
+                    })
+                  }
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="sr-only">
+                    {showPassword ? "Hide password" : "Show password"}
+                  </span>
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -703,6 +851,61 @@ export default function SettingsView() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Poller Configuration */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Poller Configuration</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+
+
+          <div className="flex flex-col gap-2">
+            <Label>API Key</Label>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={pollerApiKey || ""}
+                placeholder="Generate an API key to seeing it here"
+                className="font-mono text-sm"
+              />
+              <Button onClick={generateApiKey} disabled={isGeneratingKey}>
+                {isGeneratingKey ? "Generating..." : "Generate Key"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Docker Command</Label>
+            </div>
+            <div className="relative rounded-md bg-muted p-4 pr-12 overflow-x-auto">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 h-8 w-8 hover:bg-background/50"
+                onClick={copyPollerCommand}
+              >
+                {isCommandCopied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="sr-only">Copy Command</span>
+              </Button>
+              <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+{`docker run -d \\
+  --network host \\
+  ninoverstraeten/my-findr-poller \\
+  --macless-url "${settingsForm.apiURL ? settingsForm.apiURL.replace(/\/+$/, "") : "http://localhost:8082"}" \\${settingsForm.username ? `\n  --macless-user "${settingsForm.username}" \\` : ""}${settingsForm.password ? `\n  --macless-pass "********" \\` : ""}
+  --upload-to "https://findr.ninoverstraeten.com/api/ingest" \\
+  --api-key "${pollerApiKey || 'YOUR_API_KEY'}" \\
+  --hashed-keys "${settingsForm.devices.filter(d => d.advertismentKey).map(d => d.advertismentKey).join(",")}" \\
+  --poll-interval 900`}</pre>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

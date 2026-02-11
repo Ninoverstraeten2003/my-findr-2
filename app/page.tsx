@@ -99,7 +99,7 @@ export default function Page() {
         
         {view === "settings" && (
           <div className="h-full overflow-y-auto">
-            <SettingsView />
+            <SettingsView /> 
           </div>
         )}
       </main>
