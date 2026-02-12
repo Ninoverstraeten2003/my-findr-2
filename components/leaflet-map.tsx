@@ -60,6 +60,7 @@ export default function LeafletMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const isProgrammaticMoveRef = useRef(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
   const isDark =
@@ -97,6 +98,20 @@ export default function LeafletMap({
 
     L.control.zoom({ position: "topleft" }).addTo(map);
 
+    // Disable interaction during programmatic moves
+    const handleMoveStart = () => {
+      if (isProgrammaticMoveRef.current) {
+        L.DomUtil.addClass(map.getContainer(), "pointer-events-none");
+      }
+    };
+
+    const handleMoveEnd = () => {
+      L.DomUtil.removeClass(map.getContainer(), "pointer-events-none");
+    };
+
+    map.on("movestart", handleMoveStart);
+    map.on("moveend", handleMoveEnd);
+
     // Tile layer managed in separate useEffect
 
     const layerGroup = L.layerGroup().addTo(map);
@@ -110,6 +125,8 @@ export default function LeafletMap({
     }
 
     return () => {
+      map.off("movestart", handleMoveStart);
+      map.off("moveend", handleMoveEnd);
       map.remove();
       mapRef.current = null;
       layerGroupRef.current = null;
@@ -127,6 +144,14 @@ export default function LeafletMap({
     // However, fitBounds might be weird if map has 0 size.
     // So better to guard it or invalidateSize first.
     if (!isVisible) return; 
+
+    // Signal that the next move is programmatic
+    isProgrammaticMoveRef.current = true;
+    // Reset the flag shortly after to ensure it doesn't stick if move is instant or fails to start async
+    // (Leaflet moves are usually synchronous start, but 'flyTo' can be async start)
+    setTimeout(() => {
+      isProgrammaticMoveRef.current = false;
+    }, 100);
 
     if (showHistory && filteredReports.length > 0) {
       const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [

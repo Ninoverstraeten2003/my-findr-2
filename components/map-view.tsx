@@ -42,6 +42,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const [zoom, setZoom] = useState(7);
   const [guessedLocation, setGuessedLocation] = useState<[number, number]>();
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
+  const [isSwitchingDevice, setIsSwitchingDevice] = useState(false);
   const shouldZoomRef = useRef(false);
 
   // Missing settings view logic
@@ -74,6 +75,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
   const onDeviceChosen = useCallback(
     (device: Device) => {
+      setIsSwitchingDevice(true);
       const isSameDevice = currentDevice?.id === device.id;
       if (isSameDevice) {
         // Trigger re-validation (throttled by hook)
@@ -109,6 +111,17 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       setGuessedLocation(undefined);
     }
   }, [reports, currentDevice, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading && isSwitchingDevice) {
+      // Small delay to ensure map has started moving (and thus self-locked)
+      // before we release the parent lock.
+      const timer = setTimeout(() => {
+        setIsSwitchingDevice(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, isSwitchingDevice]);
 
   useEffect(() => {
     if (error) {
@@ -201,21 +214,26 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* Map */}
-      <LeafletMap
-        center={currentPosition}
-        zoom={zoom}
-        filteredReports={filteredReports}
-        guessedLocation={guessedLocation}
-        deviceColor={deviceColor}
-        showHistory={showHistory}
-        mapTheme={settings.mapTheme || "system"}
-        isVisible={isVisible}
-        onCopyLocation={(lat, lon) => {
-          const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-          navigator.clipboard.writeText(url);
-          toast({ title: "Map link copied" });
-        }}
-      />
+      {/* Map */}
+      <div
+        className={cn("h-full w-full", isSwitchingDevice && "pointer-events-none")}
+      >
+        <LeafletMap
+          center={currentPosition}
+          zoom={zoom}
+          filteredReports={filteredReports}
+          guessedLocation={guessedLocation}
+          deviceColor={deviceColor}
+          showHistory={showHistory}
+          mapTheme={settings.mapTheme || "system"}
+          isVisible={isVisible}
+          onCopyLocation={(lat, lon) => {
+            const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+            navigator.clipboard.writeText(url);
+            toast({ title: "Map link copied" });
+          }}
+        />
+      </div>
 
 
       {/* Device Panel */}
