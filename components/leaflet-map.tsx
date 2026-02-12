@@ -91,6 +91,7 @@ export default function LeafletMap({
       center,
       zoom: 7,
       zoomControl: false,
+      attributionControl: false,
       minZoom: 3,
     });
 

@@ -229,7 +229,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       {/* Loading Indicator */}
       {isLoading && (
         <div className="absolute bottom-24 md:top-3 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto touch-none">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span className="text-sm font-medium text-foreground">
               Loading reports...
@@ -242,13 +242,13 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       {reports.length > 1 && showHistory && (
         <>
           {/* Mobile Vertical Slider */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] pointer-events-none md:hidden">
-            <div className="flex items-stretch gap-3 p-3 rounded-xl bg-card/30 backdrop-blur-md border border-border shadow-lg pointer-events-auto h-80">
-              <div className="flex flex-col justify-between py-10 w-20">
-                <span className="text-[10px] font-medium text-muted-foreground text-right leading-tight">
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[900] pointer-events-none md:hidden">
+            <div className="flex items-stretch gap-3 p-3 rounded-xl bg-card/30 backdrop-blur-xs border border-border shadow-lg pointer-events-auto h-80 touch-none">
+              <div className="flex flex-col justify-between py-10 w-16">
+                <span className="text-[10px] font-medium text-foreground text-right leading-tight">
                   {getSliderLabel(filterRange[1])}
                 </span>
-                <span className="text-[10px] font-medium text-muted-foreground text-right leading-tight">
+                <span className="text-[10px] font-medium text-foreground text-right leading-tight">
                   {getSliderLabel(filterRange[0])}
                 </span>
               </div>
@@ -280,7 +280,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
           {/* Desktop Horizontal Slider */}
           <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none hidden md:block">
-            <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-card/30 backdrop-blur-md border border-border shadow-lg pointer-events-auto">
+            <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-card/30 backdrop-blur-md border border-border shadow-lg pointer-events-auto touch-none">
               <div className="flex-1 flex flex-col gap-1.5">
                 <div className="flex justify-between px-1">
                   <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
@@ -321,10 +321,16 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         <div
           className={cn(
             "absolute z-[1000] left-4 transition-all duration-300",
-            "bottom-6 md:bottom-auto md:top-3 md:left-14"
+            "bottom-6 md:bottom-auto md:top-3 md:left-14",
+            "touch-none pointer-events-auto"
           )}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/30 backdrop-blur-md border border-border shadow-md">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/30 backdrop-blur-md border border-border shadow-md touch-none">
             <div
               className="w-2.5 h-2.5 rounded-full transition-colors duration-300"
               style={{

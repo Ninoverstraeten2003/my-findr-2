@@ -15,7 +15,7 @@ export default function Page() {
   return (
     <div className="flex flex-col h-dvh bg-background">
       {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/30 backdrop-blur-md z-10 shrink-0">
+      <header className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/30 backdrop-blur-md z-10 shrink-0 touch-none">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-lg leading-none pt-0.5">
             📍
@@ -67,8 +67,8 @@ export default function Page() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Map className="h-3.5 w-3.5 mr-1.5" />
-              Map
+              <Map className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Map</span>
             </Button>
             <Button
               size="sm"
@@ -81,8 +81,8 @@ export default function Page() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Settings className="h-3.5 w-3.5 mr-1.5" />
-              Settings
+              <Settings className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Settings</span>
             </Button>
           </nav>
         </div>

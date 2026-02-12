@@ -78,13 +78,13 @@ export default function DevicesPanel({
   const status = pluralize(devices.length, "Device");
 
   return (
-    <div className="absolute top-3 right-3 z-[1000] w-72">
+    <div className="absolute top-3 right-3 z-[1001] w-72 touch-none">
       <div className="rounded-xl border border-border bg-card/30 backdrop-blur-md shadow-lg overflow-hidden">
         {/* Header */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-card-foreground hover:bg-secondary/40 transition-colors"
+          className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-card-foreground hover:bg-secondary/40 transition-colors touch-none"
         >
           <div className="flex items-center gap-2">
             <span>{status}</span>
@@ -102,7 +102,7 @@ export default function DevicesPanel({
 
         {/* Device List */}
         {isOpen && (
-          <div className="border-t border-border max-h-60 overflow-y-auto">
+          <div className="border-t border-border max-h-60 overflow-y-auto touch-pan-y">
             {devices.map((device) => {
               const IconComp = iconMap[device.icon] || MapPin;
               const isActive = currentDevice?.id === device.id;
@@ -125,7 +125,7 @@ export default function DevicesPanel({
                   variant="ghost"
                   onClick={() => onDeviceChosen(device)}
                   className={cn(
-                    "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-all duration-300",
+                    "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-all duration-300 touch-pan-y",
                     isActive
                       ? "bg-card shadow-sm border-l-2 border-l-primary"
                       : "hover:pl-5 border-l-2 border-l-transparent"
