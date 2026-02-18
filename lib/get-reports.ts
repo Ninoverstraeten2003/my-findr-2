@@ -1,20 +1,19 @@
 import { decryptPayload, getAdvertisementKey } from "./decrypt-payload";
 import type { Device, DeviceReport } from "./types";
 
+/**
+ * Fetch & decrypt reports from the Haystack backend (direct API).
+ */
 export async function getReportsForDevice(
   device: Device,
   apiURL: string,
   username: string,
   password: string,
-  days = 7,
-  usePoller: boolean = false,
-  pollerApiKey: string = "",
-  showHistory: boolean = true
+  days = 7
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
-  // 1. Always fetch from "Haystack" (The direct API/Backend)
-  let reports = await fetchDevicesReports(
+  const reports = await fetchDevicesReports(
     [device.advertismentKey],
     days,
     apiURL,
@@ -22,36 +21,39 @@ export async function getReportsForDevice(
     password
   );
 
-  // 2. If Poller is enabled AND History is enabled, fetch from Poller Service and merge
-  if (usePoller && pollerApiKey && showHistory) {
-    try {
-      const pollerReports = await fetchPollerReports(
-        device.advertismentKey,
-        pollerApiKey
-      );
+  return decryptReports(reports, device.privateKey);
+}
 
-      // Merge: deduplicate by ID
-      const reportMap = new Map<string, DeviceReport>();
+/**
+ * Fetch & decrypt reports from the Poller service.
+ */
+export async function getPollerReportsForDevice(
+  device: Device,
+  pollerApiKey: string
+): Promise<DeviceReport[]> {
+  device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
-      // Haystack reports first
-      reports.forEach((r) => reportMap.set(r.id, r));
-      // Poller reports second (overwrite or add new)
-      pollerReports.forEach((r) => reportMap.set(r.id, r));
+  const reports = await fetchPollerReports(
+    device.advertismentKey,
+    pollerApiKey
+  );
 
-      reports = Array.from(reportMap.values());
-    } catch (error) {
-      console.error("Failed to fetch/merge poller reports:", error);
-      // Fallback to just haystack reports if poller fails
-    }
-  }
+  return decryptReports(reports, device.privateKey);
+}
 
+// ── shared helpers ──────────────────────────────────────────────────
+
+async function decryptReports(
+  reports: DeviceReport[],
+  privateKey: string
+): Promise<DeviceReport[]> {
   const decryptedReports: DeviceReport[] = [];
 
   const decryptReport = async (report: DeviceReport) => {
     try {
       const decryptedPayload = await decryptPayload(
         report.payload,
-        device.privateKey
+        privateKey
       );
       report.decrypedPayload = decryptedPayload;
       decryptedReports.push(report);
@@ -148,20 +150,8 @@ async function fetchPollerReports(
   const data = await response.json();
   
   // Map Poller response to DeviceReport[]
-  // Poller response format:
-  // [
-  //   {
-  //     "id": 1,
-  //     "hashed_public_key": "...",
-  //     "timestamp": 1700000000,
-  //     "encrypted_report": "SGVsbG8=",
-  //     "received_at": "..."
-  //   }, ...
-  // ]
-  
   return data.map((item: any) => ({
     id: String(item.id),
     payload: item.encrypted_report,
-    // decrypedPayload will be added by the main function
   })) as DeviceReport[];
 }

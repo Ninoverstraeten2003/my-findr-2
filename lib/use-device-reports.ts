@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getReportsForDevice } from "./get-reports";
+import { getReportsForDevice, getPollerReportsForDevice } from "./get-reports";
 import type { Device } from "./types";
 
 export function useDeviceReports(
@@ -12,8 +12,7 @@ export function useDeviceReports(
   days: number,
   usePoller: boolean,
   pollerApiKey: string,
-  pollerTier: "free" | "pro" | "unlimited" = "free",
-  showHistory: boolean
+  pollerTier: "free" | "pro" | "unlimited" = "free"
 ) {
   const queryKey = [
     "deviceReports",
@@ -24,27 +23,21 @@ export function useDeviceReports(
     usePoller,
     pollerApiKey,
     pollerTier,
-    showHistory,
   ];
 
-  // If using Poller, always poll every 60s (1 minute).
-  // Otherwise default to 60s for standard backend polling.
+  // Always poll every 60s (1 minute).
   const staleTime = 60_000;
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
       if (!device) throw new Error("Device is required");
-      return getReportsForDevice(
-        device,
-        apiURL,
-        username,
-        password,
-        days,
-        usePoller,
-        pollerApiKey,
-        showHistory
-      );
+
+      if (usePoller && pollerApiKey) {
+        return getPollerReportsForDevice(device, pollerApiKey);
+      }
+
+      return getReportsForDevice(device, apiURL, username, password, days);
     },
     enabled: !!device && (!!apiURL || (usePoller && !!pollerApiKey)),
     refetchOnWindowFocus: false,

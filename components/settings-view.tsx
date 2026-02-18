@@ -461,7 +461,7 @@ export default function SettingsView() {
                   <p>
                     Using the Findr Poller service. Reports will be fetched via 
                     <code className="mx-1 px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">findr.ninoverstraeten.com</code>
-                    instead of your direct connection.
+                    instead of your direct connection. You still hold the keys to these encrypted reports but batching, sending reports to my store for history tracking and rate limiting is handled by the poller. This allows you to close this app and the poller will continue to track your devices.
                   </p>
                   <div className="mt-2 text-xs opacity-80 border-t border-blue-200 dark:border-blue-900 pt-2">
                     <p><strong>Connection Settings used:</strong></p>
@@ -812,12 +812,6 @@ export default function SettingsView() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex gap-2 items-start rounded-md bg-primary/5 p-3 text-xs text-muted-foreground border border-primary/10">
-            <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-            <p>
-              Devices are tracked for a maximum of 7 days and each key can hold a maximum of 20 reports due to Apple server limitations.
-            </p>
-          </div>
           {settingsForm.devices.length === 0 && !showDeviceForm && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               No devices added yet. Click Add to get started.
