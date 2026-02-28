@@ -9,7 +9,7 @@ import { exportKML } from "@/lib/export-kml";
 import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
+import TimelineControl from "@/components/timeline-control";
 import { Download, Copy, Settings, Loader2, Check, Map as MapIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
@@ -161,15 +161,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     }
   }, [filteredReports, showHistory]);
 
-  const getSliderLabel = useCallback(
-    (reportIndex: number) => {
-      const d = reports[reportIndex - 1]?.decrypedPayload?.date;
-      if (!d) return "";
-      return `${d.toLocaleTimeString()} ${d.toLocaleDateString()}`;
-    },
-    [reports]
-  );
-
   const deviceColor = currentDevice?.hexColor || "#0ea5e9";
 
   const displayLocation = useMemo(() => {
@@ -213,7 +204,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* Map */}
-      {/* Map */}
       <div
         className={cn("h-full w-full", isSwitchingDevice && "pointer-events-none")}
       >
@@ -233,7 +223,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           }}
         />
       </div>
-
 
       {/* Device Panel */}
       <DevicesPanel
@@ -255,82 +244,15 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         </div>
       )}
 
-      {/* History Slider and Export */}
+      {/* Timeline Control with minimap, date picker, and slider */}
       {reports.length > 1 && showHistory && (
-        <>
-          {/* Mobile Vertical Slider */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[900] pointer-events-none md:hidden">
-            <div className="flex items-stretch gap-3 p-3 rounded-xl bg-card/30 backdrop-blur-xs border border-border shadow-lg pointer-events-auto h-80 touch-none">
-              <div className="flex flex-col justify-between py-10 w-16">
-                <span className="text-[10px] font-medium text-foreground text-right leading-tight">
-                  {getSliderLabel(filterRange[1])}
-                </span>
-                <span className="text-[10px] font-medium text-foreground text-right leading-tight">
-                  {getSliderLabel(filterRange[0])}
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-4 h-full">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() => exportKML(filteredReports)}
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="sr-only">Export KML</span>
-                </Button>
-                <Slider
-                  orientation="vertical"
-                  value={filterRange}
-                  onValueChange={(v) =>
-                    setFilterRange(v as [number, number])
-                  }
-                  min={1}
-                  max={reports.length}
-                  step={1}
-                  className="flex-1"
-                  color={deviceColor}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Horizontal Slider */}
-          <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none hidden md:block">
-            <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-card/30 backdrop-blur-md border border-border shadow-lg pointer-events-auto touch-none">
-              <div className="flex-1 flex flex-col gap-1.5">
-                <div className="flex justify-between px-1">
-                  <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
-                    {getSliderLabel(filterRange[0])}
-                  </span>
-                  <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
-                    {getSliderLabel(filterRange[1])}
-                  </span>
-                </div>
-                <Slider
-                  value={filterRange}
-                  onValueChange={(v) =>
-                    setFilterRange(v as [number, number])
-                  }
-                  min={1}
-                  max={reports.length}
-                  step={1}
-                  className="w-full"
-                  color={deviceColor}
-                />
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 shrink-0"
-                onClick={() => exportKML(filteredReports)}
-              >
-                <Download className="h-4 w-4" />
-                <span className="sr-only">Export KML</span>
-              </Button>
-            </div>
-          </div>
-        </>
+        <TimelineControl
+          reports={reports}
+          filterRange={filterRange}
+          onFilterRangeChange={setFilterRange}
+          deviceColor={deviceColor}
+          onExport={() => exportKML(filteredReports)}
+        />
       )}
 
       {/* Location Info */}
@@ -381,3 +303,4 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     </div>
   );
 }
+
