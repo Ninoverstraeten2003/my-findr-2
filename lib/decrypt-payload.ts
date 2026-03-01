@@ -114,7 +114,7 @@ function getECDHKeyDerivation(
   privateKey: KeyPair
 ): Uint8Array {
   const sharedKey = privateKey.derive(ephemeralPublicKey.getPublic());
-  return hexStringToByteArray(sharedKey.toString(16));
+  return hexStringToByteArray(sharedKey.toString(16).padStart(56, "0"));
 }
 
 function decodeConfidence(payloadByteArray: Uint8Array): number {

@@ -16,6 +16,7 @@ export interface DecryptedPayload {
 export interface DeviceReport {
   payload: string;
   id: string;
+  receivedAt?: string;
   decrypedPayload: DecryptedPayload;
 }
 

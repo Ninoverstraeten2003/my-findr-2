@@ -29,13 +29,15 @@ export async function getReportsForDevice(
  */
 export async function getPollerReportsForDevice(
   device: Device,
-  pollerApiKey: string
+  pollerApiKey: string,
+  after?: string
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
   const reports = await fetchPollerReports(
     device.advertismentKey,
-    pollerApiKey
+    pollerApiKey,
+    after
   );
 
   return decryptReports(reports, device.privateKey);
@@ -118,11 +120,15 @@ async function fetchDevicesReports(
 
 async function fetchPollerReports(
   advertisementKey: string,
-  apiKey: string
+  apiKey: string,
+  after?: string
 ): Promise<DeviceReport[]> {
   // URL Encode the key just in case, though it usually is safebase64 or similar
   const encodedKey = encodeURIComponent(advertisementKey);
-  const url = `https://findr.ninoverstraeten.com/api/reports/${encodedKey}`;
+  let url = `https://findr.ninoverstraeten.com/api/reports/${encodedKey}`;
+  if (after) {
+    url += `?after=${encodeURIComponent(after)}`;
+  }
 
   let response;
   try {
@@ -153,5 +159,6 @@ async function fetchPollerReports(
   return data.map((item: any) => ({
     id: String(item.id),
     payload: item.encrypted_report,
+    receivedAt: item.received_at,
   })) as DeviceReport[];
 }

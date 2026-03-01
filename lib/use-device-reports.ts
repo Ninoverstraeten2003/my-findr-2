@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getReportsForDevice, getPollerReportsForDevice } from "./get-reports";
-import type { Device } from "./types";
+import type { Device, DeviceReport } from "./types";
 
 export function useDeviceReports(
   device: Device | undefined,
@@ -14,6 +14,8 @@ export function useDeviceReports(
   pollerApiKey: string,
   pollerTier: "free" | "pro" | "unlimited" = "free"
 ) {
+  const queryClient = useQueryClient();
+
   const queryKey = [
     "deviceReports",
     device?.id,
@@ -34,7 +36,46 @@ export function useDeviceReports(
       if (!device) throw new Error("Device is required");
 
       if (usePoller && pollerApiKey) {
-        return getPollerReportsForDevice(device, pollerApiKey);
+        // Delta fetching: check existing cached data
+        const existingReports =
+          queryClient.getQueryData<DeviceReport[]>(queryKey) || [];
+
+        // Find the latest receivedAt from existing reports
+        let after: string | undefined;
+        if (existingReports.length > 0) {
+          const latestReceivedAt = existingReports.reduce(
+            (latest, r) => {
+              if (r.receivedAt && r.receivedAt > latest) return r.receivedAt;
+              return latest;
+            },
+            ""
+          );
+          if (latestReceivedAt) {
+            after = latestReceivedAt;
+          }
+        }
+
+        const newReports = await getPollerReportsForDevice(
+          device,
+          pollerApiKey,
+          after
+        );
+
+        if (after && existingReports.length > 0) {
+          // Merge: deduplicate by id, then sort by date
+          const existingIds = new Set(existingReports.map((r) => r.id));
+          const uniqueNew = newReports.filter((r) => !existingIds.has(r.id));
+
+          if (uniqueNew.length === 0) return existingReports;
+
+          return [...existingReports, ...uniqueNew].sort(
+            (a, b) =>
+              new Date(a.decrypedPayload.date).getTime() -
+              new Date(b.decrypedPayload.date).getTime()
+          );
+        }
+
+        return newReports;
       }
 
       return getReportsForDevice(device, apiURL, username, password, days);
