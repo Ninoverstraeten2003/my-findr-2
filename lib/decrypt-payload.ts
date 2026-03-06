@@ -231,8 +231,11 @@ export function calculateBestLocation(deviceReports: DeviceReport[]) {
     const loc = r.decrypedPayload.location;
     const ageHours = (now - r.decrypedPayload.date.getTime()) / 3_600_000;
     const accuracy = Math.max(1, loc.accuracy);
+    const confidence = r.decrypedPayload.confidence;
 
-    const weight = (1 / accuracy) * Math.pow(0.5, ageHours);
+    // Confidence multiplier: 3→4x, 2→2.5x, 1→1.5x, 0→1x
+    const confidenceBoost = 1 + confidence * (confidence >= 3 ? 1 : 0.5 + confidence * 0.167);
+    const weight = (1 / accuracy) * confidenceBoost * Math.pow(0.5, ageHours);
     totalLat += loc.latitude * weight;
     totalLon += loc.longitude * weight;
     totalWeight += weight;

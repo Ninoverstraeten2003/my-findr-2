@@ -4,20 +4,52 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
-import { timeSince } from "@/lib/app-utils";
 
-const MARKER_MIN_RADIUS = 2.5;
-const MARKER_MAX_RADIUS = 6;
-const LAST_MARKER_RADIUS = 8; // Declared LAST_MARKER_RADIUS variable
+// Confidence-based radius: higher confidence = larger, more prominent dot
+function confidenceToRadius(confidence: number): number {
+  switch (confidence) {
+    case 3: return 6;   // High confidence – prominent
+    case 2: return 4.5; // Medium confidence
+    case 1: return 3.5; // Low confidence
+    default: return 2.5; // Unknown / 0
+  }
+}
 
-function accuracyToRadius(accuracy: number): number {
-  if (accuracy <= 0) return MARKER_MIN_RADIUS;
-  return (
-    Math.round(
-      Math.max(MARKER_MIN_RADIUS, Math.min(accuracy / 20, MARKER_MAX_RADIUS)) *
-        10
-    ) / 10
-  );
+// Confidence-based fill opacity boost
+function confidenceToOpacity(confidence: number, baseFreshness: number): number {
+  const base = 0.15 + baseFreshness * 0.45;
+  switch (confidence) {
+    case 3: return Math.min(1, base + 0.35);
+    case 2: return Math.min(1, base + 0.2);
+    case 1: return Math.min(1, base + 0.05);
+    default: return base * 0.7;
+  }
+}
+
+// Confidence label helper
+function confidenceLabel(confidence: number): string {
+  switch (confidence) {
+    case 3: return "High";
+    case 2: return "Medium";
+    case 1: return "Low";
+    default: return "Very Low";
+  }
+}
+
+// Accuracy label helper – describes iPhone GPS quality
+function accuracyLabel(accuracy: number): string {
+  if (accuracy <= 10) return "Excellent";
+  if (accuracy <= 35) return "Good";
+  if (accuracy <= 65) return "Fair";
+  if (accuracy <= 100) return "Poor";
+  return "Very Poor";
+}
+
+// Convert accuracy to a visible ring radius on the map (meters → pixels)
+// We clamp to keep it visually reasonable
+function accuracyToRingRadius(accuracy: number): number {
+  if (accuracy <= 0) return 0;
+  return Math.max(10, Math.min(accuracy * 0.35, 40));
 }
 
 const TILE_LAYERS = {
@@ -251,22 +283,45 @@ export default function LeafletMap({
       filteredReports.slice(0, total - 1).forEach((report, idx) => {
         const { decrypedPayload: payload } = report;
         const { location } = payload;
+        const confidence = payload.confidence;
         const freshness = total > 1 ? idx / (total - 1) : 1;
-        const fillOpacity = 0.2 + freshness * 0.6;
-        const radius = accuracyToRadius(location.accuracy);
+        const fillOpacity = confidenceToOpacity(confidence, freshness);
+        const radius = confidenceToRadius(confidence);
 
+        // Accuracy uncertainty ring (subtle halo showing GPS quality)
+        const ringRadius = accuracyToRingRadius(location.accuracy);
+        if (ringRadius > radius + 2) {
+          const ring = L.circleMarker(
+            [location.latitude, location.longitude],
+            {
+              color: deviceColor,
+              weight: 1,
+              opacity: 0.12 + freshness * 0.08,
+              fillColor: deviceColor,
+              fillOpacity: 0.03 + freshness * 0.04,
+              radius: ringRadius,
+              dashArray: location.accuracy > 65 ? "3, 4" : undefined,
+            }
+          );
+          ring.addTo(layerGroup);
+        }
+
+        // Main dot – sized by confidence
         const marker = L.circleMarker(
           [location.latitude, location.longitude],
           {
             color: useDarkMarkers
-              ? "rgba(255,255,255,0.3)"
-              : "rgba(0,0,0,0.15)",
-            weight: 0.5,
+              ? `rgba(255,255,255,${confidence >= 2 ? 0.5 : 0.25})`
+              : `rgba(0,0,0,${confidence >= 2 ? 0.2 : 0.1})`,
+            weight: confidence >= 2 ? 1 : 0.5,
             fillColor: deviceColor,
             fillOpacity,
             radius,
           }
         );
+
+        // Confidence badge color
+        const confBadgeColor = confidence === 3 ? "#22c55e" : confidence === 2 ? "#eab308" : confidence === 1 ? "#f97316" : "#ef4444";
 
         const tooltipContent = `
           <div class="map-tooltip-card">
@@ -277,7 +332,7 @@ export default function LeafletMap({
               </div>
               <div class="map-tooltip-status-dot" style="background-color: ${deviceColor}; box-shadow: 0 0 0 3px ${deviceColor}40;"></div>
             </div>
-            
+
             <div class="map-tooltip-grid">
               <div class="map-tooltip-item">
                 <div class="map-tooltip-label">Latitude</div>
@@ -286,6 +341,22 @@ export default function LeafletMap({
               <div class="map-tooltip-item">
                 <div class="map-tooltip-label">Longitude</div>
                 <div class="map-tooltip-value">${location.longitude.toFixed(5)}°</div>
+              </div>
+            </div>
+
+            <div class="map-tooltip-divider"></div>
+
+            <div class="map-tooltip-grid">
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Confidence</div>
+                <div class="map-tooltip-value" style="display:flex;align-items:center;gap:5px;">
+                  <span class="map-tooltip-conf-dot" style="background:${confBadgeColor};"></span>
+                  ${confidenceLabel(confidence)}
+                </div>
+              </div>
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">GPS Accuracy</div>
+                <div class="map-tooltip-value">${accuracyLabel(location.accuracy)} <span style="opacity:0.5;">(±${location.accuracy}m)</span></div>
               </div>
             </div>
           </div>
@@ -302,27 +373,34 @@ export default function LeafletMap({
 
     // Main Location Marker (Always render the "latest" point with consistent styling)
     let mainLocation: [number, number] | undefined;
-    let popupTitle = "Current Location";
-    let popupSubtitle = "";
-    let additionalInfo = "";
+    let lastConfidence = 0;
+    let lastAccuracy = 100;
 
     if (showHistory && filteredReports.length > 0) {
       const lastReport = filteredReports[filteredReports.length - 1];
       const { location } = lastReport.decrypedPayload;
       mainLocation = [location.latitude, location.longitude];
-      popupTitle = "Latest Location";
-      
-      const timeStr = lastReport.decrypedPayload.date.toLocaleTimeString();
-      const relativeTime = timeSince(lastReport.decrypedPayload.date);
-      popupSubtitle = `<div style="margin-bottom:4px;">${timeStr} (${relativeTime} ago)</div>`;
-      additionalInfo = `<div style="font-size:10px;font-family:monospace;opacity:0.7;margin-top:2px;">
-         Battery: ${lastReport.decrypedPayload.battery}
-      </div>`;
+      lastConfidence = lastReport.decrypedPayload.confidence;
+      lastAccuracy = location.accuracy;
     } else if (guessedLocation && !showHistory) {
       mainLocation = guessedLocation;
     }
 
     if (mainLocation) {
+      // Accuracy uncertainty ring around the latest marker
+      const latestRingRadius = accuracyToRingRadius(lastAccuracy);
+      if (latestRingRadius > 12) {
+        L.circleMarker(mainLocation, {
+          color: deviceColor,
+          weight: 1.5,
+          opacity: 0.2,
+          fillColor: deviceColor,
+          fillOpacity: 0.06,
+          radius: latestRingRadius,
+          dashArray: lastAccuracy > 65 ? "4, 5" : undefined,
+        }).addTo(layerGroup);
+      }
+
       const icon = L.divIcon({
         className: "custom-location-marker",
         html: `<div style="position: relative; width: 100%; height: 100%;">
@@ -523,6 +601,12 @@ export default function LeafletMap({
           gap: 16px;
         }
 
+        .map-tooltip-divider {
+          height: 1px;
+          background: ${activeTheme === "light" || activeTheme === "streets" ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)"};
+          margin: 10px 0;
+        }
+
         .map-tooltip-item {
           text-align: left;
         }
@@ -541,6 +625,14 @@ export default function LeafletMap({
           font-size: 12px;
           color: hsl(var(--foreground));
           font-weight: 600;
+        }
+
+        .map-tooltip-conf-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          flex-shrink: 0;
         }
       `}</style>
       <div className="relative h-full w-full">
