@@ -315,19 +315,28 @@ export default function LeafletMap({
       }
     }
 
-    // Trail polyline (uses all reports for the path)
+    // Trail polyline — exclude absorbed dots, end at the cluster location
     if (showHistory && filteredReports.length > 1) {
-      const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [
-        r.decrypedPayload.location.latitude,
-        r.decrypedPayload.location.longitude,
-      ]);
+      const latlngs: L.LatLngTuple[] = filteredReports
+        .filter((_, idx) => !absorbedIndices.has(idx))
+        .map((r) => [
+          r.decrypedPayload.location.latitude,
+          r.decrypedPayload.location.longitude,
+        ]);
 
-      L.polyline(latlngs, {
-        dashArray: "6, 12",
-        weight: 2,
-        opacity: 0.5,
-        color: useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor,
-      }).addTo(layerGroup);
+      // Connect the trail to the cluster's best location
+      if (bestClusterLoc) {
+        latlngs.push([bestClusterLoc.lat, bestClusterLoc.lon]);
+      }
+
+      if (latlngs.length > 1) {
+        L.polyline(latlngs, {
+          dashArray: "6, 12",
+          weight: 2,
+          opacity: 0.5,
+          color: useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor,
+        }).addTo(layerGroup);
+      }
     }
 
     // Report markers — skip absorbed indices (they're part of the latest cluster)
