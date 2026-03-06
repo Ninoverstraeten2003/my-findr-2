@@ -208,6 +208,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         className={cn("h-full w-full", isSwitchingDevice && "pointer-events-none")}
       >
         <LeafletMap
+          deviceId={currentDevice?.id}
           center={currentPosition}
           zoom={zoom}
           filteredReports={filteredReports}

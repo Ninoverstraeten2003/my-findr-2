@@ -62,6 +62,7 @@ const ATTRIBUTIONS = {
 };
 
 interface LeafletMapProps {
+  deviceId?: string;
   center: [number, number];
   zoom: number;
   filteredReports: DeviceReport[];
@@ -74,6 +75,7 @@ interface LeafletMapProps {
 }
 
 export default function LeafletMap({
+  deviceId,
   center,
   zoom,
   filteredReports,
@@ -89,6 +91,7 @@ export default function LeafletMap({
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const isProgrammaticMoveRef = useRef(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const hasInitialFitRef = useRef(false);
 
   const isDark =
     typeof window !== "undefined" &&
@@ -165,17 +168,10 @@ export default function LeafletMap({
   // Update map view when center/zoom changes
   const fitMapToState = useCallback(() => {
     if (!mapRef.current) return;
-    
-    // If not visible, we can skip specific bounds calculations, 
-    // but usually setting view is fine. 
-    // However, fitBounds might be weird if map has 0 size.
-    // So better to guard it or invalidateSize first.
     if (!isVisible) return; 
 
     // Signal that the next move is programmatic
     isProgrammaticMoveRef.current = true;
-    // Reset the flag shortly after to ensure it doesn't stick if move is instant or fails to start async
-    // (Leaflet moves are usually synchronous start, but 'flyTo' can be async start)
     setTimeout(() => {
       isProgrammaticMoveRef.current = false;
     }, 100);
@@ -199,16 +195,23 @@ export default function LeafletMap({
     }
   }, [center, showHistory, filteredReports, isVisible]);
 
-  // Update map view when center/zoom changes
+  // Only auto-fit on initial load / device switch, not on poll updates
   useEffect(() => {
-    // We also want to fit map to state when it becomes visible
+    if (hasInitialFitRef.current) return; // Already fitted for this device
+    if (filteredReports.length === 0) return; // No data yet
+
     if (isVisible) {
-        // slight delay to ensure invalidateSize happened
-        setTimeout(() => fitMapToState(), 100);
+      setTimeout(() => fitMapToState(), 100);
     } else {
-        fitMapToState();
+      fitMapToState();
     }
-  }, [fitMapToState, zoom, isVisible]);
+    hasInitialFitRef.current = true;
+  }, [fitMapToState, zoom, isVisible, filteredReports.length]);
+
+  // Reset initial fit when device changes using explicit deviceId
+  useEffect(() => {
+    hasInitialFitRef.current = false;
+  }, [deviceId]);
 
   // Handle Map Theme
   useEffect(() => {
