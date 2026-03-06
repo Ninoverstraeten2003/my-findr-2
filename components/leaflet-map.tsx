@@ -45,12 +45,7 @@ function accuracyLabel(accuracy: number): string {
   return "Very Poor";
 }
 
-// Convert accuracy to a visible ring radius on the map (meters → pixels)
-// We clamp to keep it visually reasonable
-function accuracyToRingRadius(accuracy: number): number {
-  if (accuracy <= 0) return 0;
-  return Math.max(10, Math.min(accuracy * 0.35, 40));
-}
+
 
 const TILE_LAYERS = {
   dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -288,23 +283,6 @@ export default function LeafletMap({
         const fillOpacity = confidenceToOpacity(confidence, freshness);
         const radius = confidenceToRadius(confidence);
 
-        // Accuracy uncertainty ring (stroke-only halo showing GPS quality)
-        const ringRadius = accuracyToRingRadius(location.accuracy);
-        if (ringRadius > radius + 2) {
-          const ring = L.circleMarker(
-            [location.latitude, location.longitude],
-            {
-              color: deviceColor,
-              weight: 1,
-              opacity: 0.15 + freshness * 0.1,
-              fill: false,
-              radius: ringRadius,
-              dashArray: location.accuracy > 65 ? "3, 4" : undefined,
-            }
-          );
-          ring.addTo(layerGroup);
-        }
-
         // Main dot – sized by confidence
         const marker = L.circleMarker(
           [location.latitude, location.longitude],
@@ -387,16 +365,16 @@ export default function LeafletMap({
     }
 
     if (mainLocation) {
-      // Accuracy uncertainty ring around the latest marker (stroke-only)
-      const latestRingRadius = accuracyToRingRadius(lastAccuracy);
-      if (latestRingRadius > 12) {
-        L.circleMarker(mainLocation, {
+      // Accuracy ring on latest marker only – uses L.circle (real meters, scales with zoom)
+      if (lastAccuracy > 0) {
+        L.circle(mainLocation, {
+          radius: lastAccuracy, // real meters
           color: deviceColor,
           weight: 1.5,
-          opacity: 0.25,
-          fill: false,
-          radius: latestRingRadius,
-          dashArray: lastAccuracy > 65 ? "4, 5" : undefined,
+          opacity: 0.2,
+          fillColor: deviceColor,
+          fillOpacity: 0.04,
+          dashArray: lastAccuracy > 65 ? "6, 8" : undefined,
         }).addTo(layerGroup);
       }
 
