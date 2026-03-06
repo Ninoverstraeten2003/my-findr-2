@@ -55,6 +55,8 @@ import { useTheme } from "next-themes";
 import { cn, hexToRgba } from "@/lib/utils";
 
 
+const DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90, 365, 9999];
+
 const iconMap: Record<string, LucideIcon> = {
   MapPin,
   Circle,
@@ -642,22 +644,35 @@ export default function SettingsView() {
             <div className="flex items-center justify-between">
               <Label>History Length</Label>
               <Badge variant="secondary">
-                {pluralize(settingsForm.days, "Day")}
+                {settingsForm.days === 9999 
+                  ? "Unlimited" 
+                  : pluralize(settingsForm.days, "Day")}
               </Badge>
             </div>
-            <Slider
-              value={[settingsForm.days]}
-              onValueChange={(value) =>
-                setSettingsForm({ ...settingsForm, days: value[0] })
+            {(() => {
+              // Find closest array index matching the current days setting
+              let currentIndex = DAYS_OPTIONS.indexOf(settingsForm.days);
+              if (currentIndex === -1) {
+                currentIndex = DAYS_OPTIONS.findIndex((d) => d >= settingsForm.days);
+                if (currentIndex === -1) currentIndex = DAYS_OPTIONS.length - 1;
               }
-              onValueCommit={(value) => 
-                updateStoredSettings({ ...settingsForm, days: value[0] })
-              }
-              min={1}
-              max={7}
-              step={1}
-              className="w-full"
-            />
+
+              return (
+                <Slider
+                  value={[currentIndex]}
+                  onValueChange={(value) =>
+                    setSettingsForm({ ...settingsForm, days: DAYS_OPTIONS[value[0]] })
+                  }
+                  onValueCommit={(value) =>
+                    updateStoredSettings({ ...settingsForm, days: DAYS_OPTIONS[value[0]] })
+                  }
+                  min={0}
+                  max={DAYS_OPTIONS.length - 1}
+                  step={1}
+                  className="w-full"
+                />
+              );
+            })()}
           </div>
           <div className="flex flex-col gap-3">
             <Label>Appearance</Label>
