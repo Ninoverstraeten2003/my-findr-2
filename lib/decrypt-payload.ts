@@ -123,10 +123,6 @@ function decodeConfidence(payloadByteArray: Uint8Array): number {
   // In 89-byte reports, confidence shifts to index 5, and index 4 is usually 0.
   const len = payloadByteArray.length;
   const conf = len >= 89 ? payloadByteArray[5] : payloadByteArray[4];
-  
-  // Console logging for validation
-  console.log(`[Confidence Debug] Payload Length: ${len} bytes | Byte[4]: ${payloadByteArray[4]} | Byte[5]: ${payloadByteArray[5]} | Extracted Confidence: ${conf}`);
-  
   return conf;
 }
 

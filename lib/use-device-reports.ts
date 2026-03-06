@@ -53,6 +53,11 @@ export function useDeviceReports(
           if (latestReceivedAt) {
             after = latestReceivedAt;
           }
+        } else {
+          // Initial fetch: Limit the history by the 'days' slider setting
+          const afterDate = new Date();
+          afterDate.setDate(afterDate.getDate() - days);
+          after = afterDate.toISOString();
         }
 
         const newReports = await getPollerReportsForDevice(

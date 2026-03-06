@@ -656,14 +656,8 @@ export default function SettingsView() {
               min={1}
               max={7}
               step={1}
-              disabled={settingsForm.usePoller}
-              className={cn("w-full", settingsForm.usePoller && "opacity-50 grayscale cursor-not-allowed")}
+              className="w-full"
             />
-            {settingsForm.usePoller && (
-              <p className="text-xs text-muted-foreground mt-1">
-                History length is managed by the Poller service based on your tier.
-              </p>
-            )}
           </div>
           <div className="flex flex-col gap-3">
             <Label>Appearance</Label>
