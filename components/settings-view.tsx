@@ -775,22 +775,42 @@ export default function SettingsView() {
           </div>
 
           <Separator />
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="showHistory">Show History</Label>
-              <span className="text-xs text-muted-foreground">
-                Display location trail on the map
-              </span>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="showHistory">Show History</Label>
+                <span className="text-xs text-muted-foreground">
+                  Display location trail on the map
+                </span>
+              </div>
+              <Switch
+                id="showHistory"
+                checked={settingsForm.showHistory ?? true}
+                onCheckedChange={(checked) => {
+                  const updated = { ...settingsForm, showHistory: checked };
+                  setSettingsForm(updated);
+                  updateStoredSettings(updated);
+                }}
+              />
             </div>
-            <Switch
-              id="showHistory"
-              checked={settingsForm.showHistory ?? true}
-              onCheckedChange={(checked) => {
-                const updated = { ...settingsForm, showHistory: checked };
-                setSettingsForm(updated);
-                updateStoredSettings(updated);
-              }}
-            />
+            
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="filterLowQuality">Filter Low Quality Reports</Label>
+                <span className="text-xs text-muted-foreground">
+                  Hide reports with very low confidence and poor GPS accuracy
+                </span>
+              </div>
+              <Switch
+                id="filterLowQuality"
+                checked={settingsForm.filterLowQuality ?? true}
+                onCheckedChange={(checked) => {
+                  const updated = { ...settingsForm, filterLowQuality: checked };
+                  setSettingsForm(updated);
+                  updateStoredSettings(updated);
+                }}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

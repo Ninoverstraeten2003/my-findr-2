@@ -68,7 +68,23 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     settings.pollerTier
   );
 
-  const reports = reportsData || EMPTY_REPORTS;
+  const reports = useMemo(() => {
+    if (!reportsData) return EMPTY_REPORTS;
+    
+    // Filter out low quality reports if the setting is enabled (default true)
+    if (settings.filterLowQuality !== false) {
+      return reportsData.filter(r => {
+        const payload = r.decrypedPayload;
+        // Confidence 0/1 (Very Low/Low) AND Accuracy > 65 (Poor/Very Poor)
+        const isLowConfidence = payload.confidence <= 1;
+        const isPoorGPS = payload.location.accuracy > 65;
+        
+        return !(isLowConfidence && isPoorGPS);
+      });
+    }
+    
+    return reportsData;
+  }, [reportsData, settings.filterLowQuality]);
 
   const isLoading = isSwrLoading || isValidating;
 

@@ -11,6 +11,7 @@ export const defaultSettings: AppSettings = {
   password: "",
   days: 1,
   showHistory: true,
+  filterLowQuality: true,
   mapTheme: "system",
   appTheme: "system",
   usePoller: false,
