@@ -256,7 +256,66 @@ export default function LeafletMap({
 
     layerGroup.clearLayers();
 
-    // Trail polyline
+    // --- Haversine helper (meters between two lat/lon points) ---
+    const haversineM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const R = 6_371_000;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // --- Compute latest-cluster: absorb nearby dots into the latest marker ---
+    // Set of report indices that are absorbed into the latest cluster
+    const absorbedIndices = new Set<number>();
+    let bestClusterLoc: { lat: number; lon: number; accuracy: number; confidence: number } | null = null;
+    let latestReport: (typeof filteredReports)[number] | null = null;
+    let clusterCount = 0;
+
+    if (showHistory && filteredReports.length > 0) {
+      latestReport = filteredReports[filteredReports.length - 1];
+      const latestLoc = latestReport.decrypedPayload.location;
+      const searchRadius = Math.max(latestLoc.accuracy, 30); // at least 30m radius
+
+      // Find all reports within the accuracy radius of the latest report
+      filteredReports.forEach((report, idx) => {
+        const loc = report.decrypedPayload.location;
+        const dist = haversineM(
+          latestLoc.latitude, latestLoc.longitude,
+          loc.latitude, loc.longitude
+        );
+        if (dist <= searchRadius) {
+          absorbedIndices.add(idx);
+        }
+      });
+
+      clusterCount = absorbedIndices.size;
+
+      // Among absorbed reports, pick the one with the best location:
+      // highest confidence first, then lowest accuracy (best GPS)
+      let bestScore = -Infinity;
+      for (const idx of absorbedIndices) {
+        const r = filteredReports[idx];
+        const loc = r.decrypedPayload.location;
+        const conf = r.decrypedPayload.confidence;
+        // Score: confidence is primary (x1000), accuracy inverse is secondary
+        const score = conf * 1000 + (255 - loc.accuracy);
+        if (score > bestScore) {
+          bestScore = score;
+          bestClusterLoc = {
+            lat: loc.latitude,
+            lon: loc.longitude,
+            accuracy: loc.accuracy,
+            confidence: conf,
+          };
+        }
+      }
+    }
+
+    // Trail polyline (uses all reports for the path)
     if (showHistory && filteredReports.length > 1) {
       const latlngs: L.LatLngTuple[] = filteredReports.map((r) => [
         r.decrypedPayload.location.latitude,
@@ -271,11 +330,13 @@ export default function LeafletMap({
       }).addTo(layerGroup);
     }
 
-    // Report markers (excluding the last one)
+    // Report markers — skip absorbed indices (they're part of the latest cluster)
     if (showHistory && filteredReports.length > 0) {
       const total = filteredReports.length;
-      // Only render up to the second to last marker
-      filteredReports.slice(0, total - 1).forEach((report, idx) => {
+      filteredReports.forEach((report, idx) => {
+        // Skip reports absorbed into the latest cluster
+        if (absorbedIndices.has(idx)) return;
+
         const { decrypedPayload: payload } = report;
         const { location } = payload;
         const confidence = payload.confidence;
@@ -348,33 +409,28 @@ export default function LeafletMap({
       });
     }
 
-    // Main Location Marker (Always render the "latest" point with consistent styling)
+    // Main Location Marker — positioned at the best location in the cluster
     let mainLocation: [number, number] | undefined;
-    let lastConfidence = 0;
-    let lastAccuracy = 100;
-    let lastReport: (typeof filteredReports)[number] | null = null;
+    let displayAccuracy = 100;
 
-    if (showHistory && filteredReports.length > 0) {
-      lastReport = filteredReports[filteredReports.length - 1];
-      const { location } = lastReport.decrypedPayload;
-      mainLocation = [location.latitude, location.longitude];
-      lastConfidence = lastReport.decrypedPayload.confidence;
-      lastAccuracy = location.accuracy;
+    if (showHistory && bestClusterLoc) {
+      mainLocation = [bestClusterLoc.lat, bestClusterLoc.lon];
+      displayAccuracy = bestClusterLoc.accuracy;
     } else if (guessedLocation && !showHistory) {
       mainLocation = guessedLocation;
     }
 
     if (mainLocation) {
-      // Accuracy ring on latest marker only – uses L.circle (real meters, scales with zoom)
-      if (lastAccuracy > 0) {
+      // Accuracy ring — real meters, scales with zoom
+      if (displayAccuracy > 0) {
         L.circle(mainLocation, {
-          radius: lastAccuracy, // real meters
+          radius: displayAccuracy,
           color: deviceColor,
           weight: 1.5,
           opacity: 0.2,
           fillColor: deviceColor,
           fillOpacity: 0.04,
-          dashArray: lastAccuracy > 65 ? "6, 8" : undefined,
+          dashArray: displayAccuracy > 65 ? "6, 8" : undefined,
         }).addTo(layerGroup);
       }
 
@@ -409,12 +465,17 @@ export default function LeafletMap({
 
       const marker = L.marker(mainLocation, { icon });
 
-      // Tooltip for latest marker
-      if (lastReport) {
-        const loc = lastReport.decrypedPayload.location;
-        const payload = lastReport.decrypedPayload;
-        const conf = payload.confidence;
+      // Tooltip — uses latest report's time, but best location's coordinates
+      if (latestReport && bestClusterLoc) {
+        const payload = latestReport.decrypedPayload;
+        const conf = bestClusterLoc.confidence;
         const confBadgeColor = conf === 3 ? "#22c55e" : conf === 2 ? "#eab308" : conf === 1 ? "#f97316" : "#ef4444";
+        const clusterInfo = clusterCount > 1
+          ? `<div class="map-tooltip-divider"></div>
+             <div style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground));padding:2px 0;">
+               Combined from ${clusterCount} nearby reports
+             </div>`
+          : "";
 
         const latestTooltip = `
           <div class="map-tooltip-card">
@@ -429,11 +490,11 @@ export default function LeafletMap({
             <div class="map-tooltip-grid">
               <div class="map-tooltip-item">
                 <div class="map-tooltip-label">Latitude</div>
-                <div class="map-tooltip-value">${loc.latitude.toFixed(5)}°</div>
+                <div class="map-tooltip-value">${bestClusterLoc.lat.toFixed(5)}°</div>
               </div>
               <div class="map-tooltip-item">
                 <div class="map-tooltip-label">Longitude</div>
-                <div class="map-tooltip-value">${loc.longitude.toFixed(5)}°</div>
+                <div class="map-tooltip-value">${bestClusterLoc.lon.toFixed(5)}°</div>
               </div>
             </div>
 
@@ -449,7 +510,7 @@ export default function LeafletMap({
               </div>
               <div class="map-tooltip-item">
                 <div class="map-tooltip-label">GPS Accuracy</div>
-                <div class="map-tooltip-value">${accuracyLabel(loc.accuracy)} <span style="opacity:0.5;">(±${loc.accuracy}m)</span></div>
+                <div class="map-tooltip-value">${accuracyLabel(bestClusterLoc.accuracy)} <span style="opacity:0.5;">(±${bestClusterLoc.accuracy}m)</span></div>
               </div>
             </div>
 
@@ -461,6 +522,7 @@ export default function LeafletMap({
                 <div class="map-tooltip-value">${payload.battery}</div>
               </div>
             </div>
+            ${clusterInfo}
           </div>
         `;
 
