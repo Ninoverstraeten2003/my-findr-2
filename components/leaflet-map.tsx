@@ -288,7 +288,7 @@ export default function LeafletMap({
         const fillOpacity = confidenceToOpacity(confidence, freshness);
         const radius = confidenceToRadius(confidence);
 
-        // Accuracy uncertainty ring (subtle halo showing GPS quality)
+        // Accuracy uncertainty ring (stroke-only halo showing GPS quality)
         const ringRadius = accuracyToRingRadius(location.accuracy);
         if (ringRadius > radius + 2) {
           const ring = L.circleMarker(
@@ -296,9 +296,8 @@ export default function LeafletMap({
             {
               color: deviceColor,
               weight: 1,
-              opacity: 0.12 + freshness * 0.08,
-              fillColor: deviceColor,
-              fillOpacity: 0.03 + freshness * 0.04,
+              opacity: 0.15 + freshness * 0.1,
+              fill: false,
               radius: ringRadius,
               dashArray: location.accuracy > 65 ? "3, 4" : undefined,
             }
@@ -375,9 +374,10 @@ export default function LeafletMap({
     let mainLocation: [number, number] | undefined;
     let lastConfidence = 0;
     let lastAccuracy = 100;
+    let lastReport: (typeof filteredReports)[number] | null = null;
 
     if (showHistory && filteredReports.length > 0) {
-      const lastReport = filteredReports[filteredReports.length - 1];
+      lastReport = filteredReports[filteredReports.length - 1];
       const { location } = lastReport.decrypedPayload;
       mainLocation = [location.latitude, location.longitude];
       lastConfidence = lastReport.decrypedPayload.confidence;
@@ -387,15 +387,14 @@ export default function LeafletMap({
     }
 
     if (mainLocation) {
-      // Accuracy uncertainty ring around the latest marker
+      // Accuracy uncertainty ring around the latest marker (stroke-only)
       const latestRingRadius = accuracyToRingRadius(lastAccuracy);
       if (latestRingRadius > 12) {
         L.circleMarker(mainLocation, {
           color: deviceColor,
           weight: 1.5,
-          opacity: 0.2,
-          fillColor: deviceColor,
-          fillOpacity: 0.06,
+          opacity: 0.25,
+          fill: false,
           radius: latestRingRadius,
           dashArray: lastAccuracy > 65 ? "4, 5" : undefined,
         }).addTo(layerGroup);
@@ -431,6 +430,70 @@ export default function LeafletMap({
       });
 
       const marker = L.marker(mainLocation, { icon });
+
+      // Tooltip for latest marker
+      if (lastReport) {
+        const loc = lastReport.decrypedPayload.location;
+        const payload = lastReport.decrypedPayload;
+        const conf = payload.confidence;
+        const confBadgeColor = conf === 3 ? "#22c55e" : conf === 2 ? "#eab308" : conf === 1 ? "#f97316" : "#ef4444";
+
+        const latestTooltip = `
+          <div class="map-tooltip-card">
+            <div class="map-tooltip-header">
+              <div>
+                <div class="map-tooltip-date">${payload.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+                <div class="map-tooltip-time">${payload.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+              <div class="map-tooltip-status-dot" style="background-color: ${deviceColor}; box-shadow: 0 0 0 3px ${deviceColor}40;"></div>
+            </div>
+
+            <div class="map-tooltip-grid">
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Latitude</div>
+                <div class="map-tooltip-value">${loc.latitude.toFixed(5)}°</div>
+              </div>
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Longitude</div>
+                <div class="map-tooltip-value">${loc.longitude.toFixed(5)}°</div>
+              </div>
+            </div>
+
+            <div class="map-tooltip-divider"></div>
+
+            <div class="map-tooltip-grid">
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Confidence</div>
+                <div class="map-tooltip-value" style="display:flex;align-items:center;gap:5px;">
+                  <span class="map-tooltip-conf-dot" style="background:${confBadgeColor};"></span>
+                  ${confidenceLabel(conf)}
+                </div>
+              </div>
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">GPS Accuracy</div>
+                <div class="map-tooltip-value">${accuracyLabel(loc.accuracy)} <span style="opacity:0.5;">(±${loc.accuracy}m)</span></div>
+              </div>
+            </div>
+
+            <div class="map-tooltip-divider"></div>
+
+            <div class="map-tooltip-grid">
+              <div class="map-tooltip-item">
+                <div class="map-tooltip-label">Battery</div>
+                <div class="map-tooltip-value">${payload.battery}</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        marker.bindTooltip(latestTooltip, {
+          direction: "top",
+          opacity: 1,
+          className: "custom-leaflet-tooltip",
+          offset: [0, -10],
+        });
+      }
+
       marker.addTo(layerGroup);
     }
   }, [
