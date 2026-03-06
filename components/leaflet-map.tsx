@@ -315,22 +315,28 @@ export default function LeafletMap({
       }
     }
 
-    // Trail polyline — exclude absorbed dots, end at the cluster location
+    // Trail polyline — keep true chronological order; absorbed dots snap to cluster location
     if (showHistory && filteredReports.length > 1) {
-      const latlngs: L.LatLngTuple[] = filteredReports
-        .filter((_, idx) => !absorbedIndices.has(idx))
-        .map((r) => [
+      const latlngs: L.LatLngTuple[] = filteredReports.map((r, idx) => {
+        if (absorbedIndices.has(idx) && bestClusterLoc) {
+          return [bestClusterLoc.lat, bestClusterLoc.lon] as L.LatLngTuple;
+        }
+        return [
           r.decrypedPayload.location.latitude,
           r.decrypedPayload.location.longitude,
-        ]);
+        ] as L.LatLngTuple;
+      });
 
-      // Connect the trail to the cluster's best location
-      if (bestClusterLoc) {
-        latlngs.push([bestClusterLoc.lat, bestClusterLoc.lon]);
+      // Deduplicate consecutive identical points to keep the line clean
+      const deduped: L.LatLngTuple[] = [latlngs[0]];
+      for (let i = 1; i < latlngs.length; i++) {
+        if (latlngs[i][0] !== latlngs[i - 1][0] || latlngs[i][1] !== latlngs[i - 1][1]) {
+          deduped.push(latlngs[i]);
+        }
       }
 
-      if (latlngs.length > 1) {
-        L.polyline(latlngs, {
+      if (deduped.length > 1) {
+        L.polyline(deduped, {
           dashArray: "6, 12",
           weight: 2,
           opacity: 0.5,
