@@ -118,7 +118,10 @@ function getECDHKeyDerivation(
 }
 
 function decodeConfidence(payloadByteArray: Uint8Array): number {
-  return payloadByteArray[4];
+  // Apple added an extra byte in newer iOS Find My reports (89 bytes total).
+  // In 88-byte reports, confidence is at index 4.
+  // In 89-byte reports, confidence shifts to index 5, and index 4 is usually 0.
+  return payloadByteArray.length >= 89 ? payloadByteArray[5] : payloadByteArray[4];
 }
 
 function decodeSeenTime(payloadByteArray: Uint8Array): Date {
