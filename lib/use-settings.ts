@@ -12,6 +12,8 @@ export const defaultSettings: AppSettings = {
   days: 1,
   showHistory: true,
   filterLowQuality: true,
+  filterMinConfidence: 1,
+  filterMaxAccuracy: 200,
   mapTheme: "system",
   appTheme: "system",
   usePoller: false,

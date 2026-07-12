@@ -39,6 +39,8 @@ export interface AppSettings {
   days: number;
   showHistory: boolean;
   filterLowQuality?: boolean;
+  filterMinConfidence?: number;
+  filterMaxAccuracy?: number;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   appTheme: "system" | "light" | "dark";
   usePoller: boolean;

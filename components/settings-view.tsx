@@ -57,6 +57,9 @@ import { cn, hexToRgba } from "@/lib/utils";
 
 const DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90, 365, 9999];
 
+const ACCURACY_OPTIONS = [10, 25, 50, 100, 200, 500, 1000, 9999];
+const CONFIDENCE_LABELS = ["Very Low", "Low", "Medium", "High"];
+
 const iconMap: Record<string, LucideIcon> = {
   MapPin,
   Circle,
@@ -796,9 +799,9 @@ export default function SettingsView() {
             
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-0.5">
-                <Label htmlFor="filterLowQuality">Filter Low Quality Reports</Label>
+                <Label htmlFor="filterLowQuality">Filter Reports by Quality</Label>
                 <span className="text-xs text-muted-foreground">
-                  Hide reports with very low confidence and poor GPS accuracy
+                  Hide reports with low confidence or poor GPS accuracy
                 </span>
               </div>
               <Switch
@@ -811,6 +814,74 @@ export default function SettingsView() {
                 }}
               />
             </div>
+
+            {settingsForm.filterLowQuality !== false && (
+              <div className="mt-2 flex flex-col gap-4 pl-4 border-l border-border/80">
+                {/* Confidence filter */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-foreground font-medium">Minimum Confidence</Label>
+                    <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-mono">
+                      {CONFIDENCE_LABELS[settingsForm.filterMinConfidence ?? 1]}
+                    </Badge>
+                  </div>
+                  <Slider
+                    value={[settingsForm.filterMinConfidence ?? 1]}
+                    onValueChange={(value) =>
+                      setSettingsForm({ ...settingsForm, filterMinConfidence: value[0] })
+                    }
+                    onValueCommit={(value) =>
+                      updateStoredSettings({ ...settingsForm, filterMinConfidence: value[0] })
+                    }
+                    min={0}
+                    max={3}
+                    step={1}
+                    className="w-full"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    Only show reports with at least this confidence score.
+                  </span>
+                </div>
+
+                {/* Accuracy filter */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-foreground font-medium">Maximum GPS Accuracy Radius</Label>
+                    <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-mono">
+                      {settingsForm.filterMaxAccuracy === 9999
+                        ? "Unlimited"
+                        : `±${settingsForm.filterMaxAccuracy ?? 200}m`}
+                    </Badge>
+                  </div>
+                  {(() => {
+                    const val = settingsForm.filterMaxAccuracy ?? 200;
+                    let currentIndex = ACCURACY_OPTIONS.indexOf(val);
+                    if (currentIndex === -1) {
+                      currentIndex = ACCURACY_OPTIONS.findIndex((d) => d >= val);
+                      if (currentIndex === -1) currentIndex = ACCURACY_OPTIONS.length - 1;
+                    }
+                    return (
+                      <Slider
+                        value={[currentIndex]}
+                        onValueChange={(value) =>
+                          setSettingsForm({ ...settingsForm, filterMaxAccuracy: ACCURACY_OPTIONS[value[0]] })
+                        }
+                        onValueCommit={(value) =>
+                          updateStoredSettings({ ...settingsForm, filterMaxAccuracy: ACCURACY_OPTIONS[value[0]] })
+                        }
+                        min={0}
+                        max={ACCURACY_OPTIONS.length - 1}
+                        step={1}
+                        className="w-full"
+                      />
+                    );
+                  })()}
+                  <span className="text-[10px] text-muted-foreground">
+                    Only show reports with GPS uncertainty below this radius.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

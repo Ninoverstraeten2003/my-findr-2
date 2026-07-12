@@ -44,6 +44,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
   const [isSwitchingDevice, setIsSwitchingDevice] = useState(false);
   const shouldZoomRef = useRef(false);
+  const lastDeviceIdRef = useRef<string | undefined>(undefined);
+  const lastReportsLengthRef = useRef<number>(0);
 
   // Missing settings view logic
   const isMissingRequiredSettings =
@@ -73,18 +75,20 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     
     // Filter out low quality reports if the setting is enabled (default true)
     if (settings.filterLowQuality !== false) {
+      const minConfidence = settings.filterMinConfidence ?? 1;
+      const maxAccuracy = settings.filterMaxAccuracy ?? 200;
+      
       return reportsData.filter(r => {
         const payload = r.decrypedPayload;
-        // Confidence 0/1 (Very Low/Low) AND Accuracy > 65 (Poor/Very Poor)
-        const isLowConfidence = payload.confidence <= 1;
-        const isPoorGPS = payload.location.accuracy > 65;
+        const confidenceOk = payload.confidence >= minConfidence;
+        const accuracyOk = payload.location.accuracy <= maxAccuracy;
         
-        return !(isLowConfidence && isPoorGPS);
+        return confidenceOk && accuracyOk;
       });
     }
     
     return reportsData;
-  }, [reportsData, settings.filterLowQuality]);
+  }, [reportsData, settings.filterLowQuality, settings.filterMinConfidence, settings.filterMaxAccuracy]);
 
   const isLoading = isSwrLoading || isValidating;
 
@@ -111,13 +115,41 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
   // Sync reports
   useEffect(() => {
-    if (!currentDevice) return;
+    if (!currentDevice) {
+      lastDeviceIdRef.current = undefined;
+      lastReportsLengthRef.current = 0;
+      return;
+    }
+
+    const deviceIdChanged = lastDeviceIdRef.current !== currentDevice.id;
 
     if (reports.length > 0) {
-      setFilterRange([1, reports.length]);
       const lastReport = reports[reports.length - 1];
       currentDevice.lastSeen = lastReport.decrypedPayload.date;
       currentDevice.battery = lastReport.decrypedPayload.battery;
+
+      if (deviceIdChanged) {
+        setFilterRange([1, reports.length]);
+      } else {
+        const prevLength = lastReportsLengthRef.current;
+        const currentLength = reports.length;
+        
+        if (currentLength !== prevLength) {
+          setFilterRange((prevRange) => {
+            // If the range was [0, 0] (no reports loaded yet), reset to full range
+            if (prevRange[0] === 0 && prevRange[1] === 0) {
+              return [1, currentLength];
+            }
+            
+            // If they were looking at the very end of the range, expand to keep showing the end.
+            const wasAtEnd = prevRange[1] === prevLength || prevRange[1] === 0;
+            const newStart = Math.min(prevRange[0] || 1, currentLength);
+            const newEnd = wasAtEnd ? currentLength : Math.min(prevRange[1], currentLength);
+            
+            return [newStart, newEnd];
+          });
+        }
+      }
     } else if (!isLoading) {
       // No reports found (invalid key or new device)
       setFilterRange([0, 0]);
@@ -125,6 +157,9 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       currentDevice.battery = "Unknown";
       setGuessedLocation(undefined);
     }
+
+    lastDeviceIdRef.current = currentDevice.id;
+    lastReportsLengthRef.current = reports.length;
   }, [reports, currentDevice, isLoading]);
 
   useEffect(() => {
