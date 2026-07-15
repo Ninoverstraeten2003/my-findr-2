@@ -796,6 +796,59 @@ export default function SettingsView() {
                 }}
               />
             </div>
+
+            {(settingsForm.showHistory ?? true) && (
+              <div className="flex items-center justify-between pl-4 border-l-2 border-muted">
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="showDirectionArrows">Show Trail Direction</Label>
+                  <span className="text-xs text-muted-foreground">
+                    Draw arrows showing movement direction on history segments
+                  </span>
+                </div>
+                <Switch
+                  id="showDirectionArrows"
+                  checked={settingsForm.showDirectionArrows ?? true}
+                  onCheckedChange={(checked) => {
+                    const updated = { ...settingsForm, showDirectionArrows: checked };
+                    setSettingsForm(updated);
+                    updateStoredSettings(updated);
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="pollInterval">Refresh Interval</Label>
+                <span className="text-xs text-muted-foreground">
+                  How often to poll for new location updates
+                </span>
+              </div>
+              <Select
+                value={String(settingsForm.pollInterval ?? 60)}
+                onValueChange={(value) => {
+                  const seconds = parseInt(value, 10);
+                  const updated = { ...settingsForm, pollInterval: seconds };
+                  setSettingsForm(updated);
+                  updateStoredSettings(updated);
+                }}
+              >
+                <SelectTrigger id="pollInterval" className="w-[140px]">
+                  <SelectValue placeholder="Select interval" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 seconds</SelectItem>
+                  <SelectItem value="30">30 seconds</SelectItem>
+                  <SelectItem value="60">1 minute</SelectItem>
+                  <SelectItem value="120">2 minutes</SelectItem>
+                  <SelectItem value="300">5 minutes</SelectItem>
+                  <SelectItem value="600">10 minutes</SelectItem>
+                  <SelectItem value="900">15 minutes</SelectItem>
+                  <SelectItem value="1800">30 minutes</SelectItem>
+                  <SelectItem value="3600">1 hour</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-0.5">

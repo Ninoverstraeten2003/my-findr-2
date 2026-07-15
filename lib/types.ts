@@ -38,9 +38,11 @@ export interface AppSettings {
   password: string;
   days: number;
   showHistory: boolean;
+  showDirectionArrows?: boolean;
   filterLowQuality?: boolean;
   filterMinConfidence?: number;
   filterMaxAccuracy?: number;
+  pollInterval?: number;
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   appTheme: "system" | "light" | "dark";
   usePoller: boolean;

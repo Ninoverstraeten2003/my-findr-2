@@ -246,6 +246,15 @@ export function calculateBestLocation(deviceReports: DeviceReport[]) {
     totalWeight += weight;
   }
 
+  if (totalWeight <= 1e-15 || isNaN(totalLat) || isNaN(totalLon)) {
+    return {
+      lat: clusterCenter.latitude,
+      lon: clusterCenter.longitude,
+      reportsInCluster: cluster.length,
+      totalValidReports: valid.length,
+    };
+  }
+
   return {
     lat: totalLat / totalWeight,
     lon: totalLon / totalWeight,

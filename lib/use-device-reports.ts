@@ -12,7 +12,8 @@ export function useDeviceReports(
   days: number,
   usePoller: boolean,
   pollerApiKey: string,
-  pollerTier: "free" | "pro" | "unlimited" = "free"
+  pollerTier: "free" | "pro" | "unlimited" = "free",
+  pollInterval: number = 60
 ) {
   const queryClient = useQueryClient();
 
@@ -25,10 +26,10 @@ export function useDeviceReports(
     usePoller,
     pollerApiKey,
     pollerTier,
+    pollInterval,
   ];
 
-  // Always poll every 60s (1 minute).
-  const staleTime = 60_000;
+  const staleTime = pollInterval * 1000;
 
   const query = useQuery({
     queryKey,

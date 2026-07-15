@@ -44,7 +44,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const [filterRange, setFilterRange] = useState<[number, number]>([0, 0]);
   const [isSwitchingDevice, setIsSwitchingDevice] = useState(false);
   const shouldZoomRef = useRef(false);
-  const lastDeviceIdRef = useRef<string | undefined>(undefined);
+  const lastSyncedDeviceIdRef = useRef<string | undefined>(undefined);
   const lastReportsLengthRef = useRef<number>(0);
 
   // Missing settings view logic
@@ -67,7 +67,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     settings.days,
     settings.usePoller,
     settings.pollerApiKey,
-    settings.pollerTier
+    settings.pollerTier,
+    settings.pollInterval
   );
 
   const reports = useMemo(() => {
@@ -116,12 +117,12 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   // Sync reports
   useEffect(() => {
     if (!currentDevice) {
-      lastDeviceIdRef.current = undefined;
+      lastSyncedDeviceIdRef.current = undefined;
       lastReportsLengthRef.current = 0;
       return;
     }
 
-    const deviceIdChanged = lastDeviceIdRef.current !== currentDevice.id;
+    const deviceIdChanged = lastSyncedDeviceIdRef.current !== currentDevice.id;
 
     if (reports.length > 0) {
       const lastReport = reports[reports.length - 1];
@@ -130,6 +131,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
       if (deviceIdChanged) {
         setFilterRange([1, reports.length]);
+        lastSyncedDeviceIdRef.current = currentDevice.id;
       } else {
         const prevLength = lastReportsLengthRef.current;
         const currentLength = reports.length;
@@ -156,9 +158,9 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       currentDevice.lastSeen = null;
       currentDevice.battery = "Unknown";
       setGuessedLocation(undefined);
+      lastSyncedDeviceIdRef.current = currentDevice.id;
     }
 
-    lastDeviceIdRef.current = currentDevice.id;
     lastReportsLengthRef.current = reports.length;
   }, [reports, currentDevice, isLoading]);
 
@@ -266,6 +268,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           guessedLocation={guessedLocation}
           deviceColor={deviceColor}
           showHistory={showHistory}
+          showDirectionArrows={settings.showDirectionArrows !== false}
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
           onCopyLocation={(lat, lon) => {
@@ -296,7 +299,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         </div>
       )}
 
-      {/* Timeline Control with minimap, date picker, and slider */}
+      {/* Timeline Control with minimap, date picker, and slider (disabled for now) */}
+      {/*
       {reports.length > 1 && showHistory && (
         <TimelineControl
           reports={reports}
@@ -306,6 +310,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           onExport={() => exportKML(filteredReports)}
         />
       )}
+      */}
 
       {/* Location Info */}
       {displayLocation && !isLoading && (
