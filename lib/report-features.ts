@@ -63,7 +63,8 @@ export function buildReportStates(reports: DeviceReport[]): string[] {
     const dt = Math.abs(pts[j].t - pts[i].t) / 1000;
     const lower = Math.max(0, dist(i, j) - pts[i].acc - pts[j].acc);
     if (dt === 0) return lower > 0 ? "same second, different place" : 0;
-    return round((lower / dt) * 3.6);
+    // One decimal: whole km/h would blur walking-pace speeds (5.4 -> 5, 1.2 -> 1).
+    return round((lower / dt) * 3.6, 1);
   };
 
   let lo = 0;
@@ -98,9 +99,14 @@ export function buildReportStates(reports: DeviceReport[]): string[] {
 
     if (hasPrev && hasNext) {
       const out = Math.min(dist(i, i - 1), dist(i, i + 1));
+      // Same idea as min_speed: only count the part of the jump that the accuracy radii can't explain.
+      const outBeyondAccuracy = Math.min(
+        dist(i, i - 1) - p.acc - pts[i - 1].acc,
+        dist(i, i + 1) - p.acc - pts[i + 1].acc,
+      );
       features.prev_to_next_m = round(dist(i - 1, i + 1));
-      // Out-and-back: this point sits far from both neighbours while they sit close to each other.
-      features.jumps_away_and_back = out > 500 && dist(i - 1, i + 1) < 0.3 * out;
+      // Out-and-back: this point sits clearly away from both neighbours while they sit close to each other.
+      features.jumps_away_and_back = outBeyondAccuracy > 300 && dist(i - 1, i + 1) < 0.3 * out;
     }
 
     features.other_reports_within_30min = others.length;
