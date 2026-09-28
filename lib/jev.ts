@@ -1,6 +1,7 @@
 // Jev (TypeSafe's structured decision model, served by OpenRouter) labels for report dots.
 // Pure helpers shared by the settings editor, the map panel and the Leaflet markers.
 
+
 export const JEV_MODEL = "typesafe/jev-1.13";
 /** OpenRouter list price for typesafe/jev-1.13: $0.042 per 1M input tokens, output is free. */
 export const JEV_PRICE_PER_M_INPUT_TOKENS = 0.042;
@@ -318,12 +319,21 @@ export function hashString(s: string): string {
   return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
 }
 
-/** Cache entries are keyed by question content + report state, so editing a question only re-asks that question. */
+/**
+ * Bump when the report description format (lib/report-features.ts) changes: answers given for an older
+ * format are then asked again once.
+ */
+export const FEATURE_VERSION = 2;
+
+/** Identifies a question's content (model + description format + wording), so editing a question re-asks only it. */
 export function questionHash(q: JevQuestionConfig): string {
-  return hashString(JSON.stringify([JEV_MODEL, toWireQuestion(q)]));
+  return hashString(JSON.stringify([JEV_MODEL, FEATURE_VERSION, toWireQuestion(q)]));
 }
 
-const CACHE_KEY = "findr-jev-cache-v1";
+// Each report is asked once per question; the answer is kept whatever the history length or new reports.
+const CACHE_KEY = "findr-jev-cache-v2";
+/** Older format keyed by description text; its answers don't apply to the current format, so it's removed. */
+const OLD_CACHE_KEYS = ["findr-jev-cache-v1"];
 const CACHE_MAX_ENTRIES = 30_000;
 
 type CacheStore = Record<string, JevRawAnswer>;
@@ -333,6 +343,7 @@ let memoryCache: CacheStore | null = null;
 function loadCache(): CacheStore {
   if (memoryCache) return memoryCache;
   try {
+    for (const k of OLD_CACHE_KEYS) localStorage.removeItem(k);
     memoryCache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}") as CacheStore;
   } catch {
     memoryCache = {};
@@ -340,8 +351,8 @@ function loadCache(): CacheStore {
   return memoryCache;
 }
 
-export function getCachedAnswer(qHash: string, stateHash: string): JevRawAnswer | undefined {
-  return loadCache()[`${qHash}:${stateHash}`];
+export function getCachedAnswer(qHash: string, reportKey: string): JevRawAnswer | undefined {
+  return loadCache()[`${qHash}:${reportKey}`];
 }
 
 function compact(a: JevRawAnswer): JevRawAnswer {
@@ -353,6 +364,7 @@ function compact(a: JevRawAnswer): JevRawAnswer {
 }
 
 export function putCachedAnswers(entries: [string, JevRawAnswer][]) {
+  if (!entries.length) return;
   const cache = loadCache();
   for (const [k, a] of entries) cache[k] = compact(a);
   const keys = Object.keys(cache);

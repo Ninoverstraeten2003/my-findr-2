@@ -182,8 +182,8 @@ export default function JevSettingsCard() {
             </div>
             <p className="col-span-2 text-xs text-muted-foreground">
               A run that would go over either limit is skipped completely, nothing is sent. {JEV_MODEL} costs $
-              {JEV_PRICE_PER_M_INPUT_TOKENS} per million input tokens; three questions take about 700 to 800 tokens per report,
-              so roughly $0.03 per 1,000 reports.
+              {JEV_PRICE_PER_M_INPUT_TOKENS} per million input tokens; three questions take about 1,000 tokens per report,
+              so roughly $0.04 per 1,000 reports. Each report is asked once per question.
             </p>
           </div>
 
@@ -242,8 +242,9 @@ export default function JevSettingsCard() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Jev only sees facts about each report (time, accuracy, Apple confidence, gaps, distances and minimum speeds
-              to the reports around it), never coordinates. Ask things those facts can answer.
+              Jev sees each report&apos;s time, accuracy and Apple confidence, the same facts for the 3 reports before and
+              after it (minutes apart, distance and direction in metres, minimum speed), and a 30-minute summary. Never
+              coordinates. Ask things those facts can answer.
             </p>
           </div>
         </CardContent>

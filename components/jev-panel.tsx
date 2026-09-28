@@ -238,7 +238,7 @@ export default function JevPanel({
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">New reports to ask</span>
+                    <span className="text-muted-foreground">Reports not asked yet</span>
                     <span className="text-right tabular-nums">{plan.reports.toLocaleString()}</span>
                     <span className="text-muted-foreground">Requests</span>
                     <span className="text-right tabular-nums">{plan.requests.toLocaleString()}</span>

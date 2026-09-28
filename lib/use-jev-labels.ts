@@ -5,7 +5,6 @@ import {
   JEV_MAX_ITEMS_PER_CALL,
   estimateTokens,
   getCachedAnswer,
-  hashString,
   labelAnswer,
   putCachedAnswers,
   questionHash,
@@ -72,38 +71,42 @@ export function useJevLabels(
   const qHashes = useMemo(() => questions.map(questionHash), [questions]);
 
   const states = useMemo(() => buildReportStates(reports), [reports]);
-  const stateHashes = useMemo(() => states.map(hashString), [states]);
+  const keys = useMemo(() => reports.map(reportKey), [reports]);
 
-  // Answers already known (cache), per report key → question id → raw answer.
-  const answers = useMemo(() => {
-    const out = new Map<string, Record<string, JevRawAnswer>>();
-    reports.forEach((r, i) => {
+  // Known answers per report key → question id, and which report/question pairs were never asked.
+  // Each report is asked once per question: history length and newly arriving reports never re-ask it.
+  const { answers, pending } = useMemo(() => {
+    const answers = new Map<string, Record<string, JevRawAnswer>>();
+    const pending = new Map<number, JevQuestionConfig[]>();
+    keys.forEach((key, i) => {
       const rec: Record<string, JevRawAnswer> = {};
+      const missing: JevQuestionConfig[] = [];
       questions.forEach((q, qi) => {
-        const a = getCachedAnswer(qHashes[qi], stateHashes[i]);
+        const a = getCachedAnswer(qHashes[qi], key);
         if (a) rec[q.id] = a;
+        else missing.push(q);
       });
-      if (Object.keys(rec).length) out.set(reportKey(r), rec);
+      if (Object.keys(rec).length) answers.set(key, rec);
+      if (missing.length) pending.set(i, missing);
     });
-    return out;
+    return { answers, pending };
     // cacheVersion forces a re-read after new answers are stored.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reports, questions, qHashes, stateHashes, cacheVersion]);
+  }, [questions, qHashes, keys, cacheVersion]);
 
-  // Group reports by which questions they still miss, so one request asks exactly those.
+  // Group reports by which questions they need, so one request asks exactly those.
   const groups = useMemo(() => {
     const bySig = new Map<string, Group>();
-    reports.forEach((r, i) => {
-      const have = answers.get(reportKey(r)) ?? {};
-      const missing = questions.filter((q) => !have[q.id]);
-      if (!missing.length) return;
+    reports.forEach((_, i) => {
+      const missing = pending.get(i);
+      if (!missing) return;
       const sig = missing.map((q) => q.id).join(",");
       const g = bySig.get(sig) ?? { questions: missing, indices: [] };
       g.indices.push(i);
       bySig.set(sig, g);
     });
     return [...bySig.values()];
-  }, [reports, questions, answers]);
+  }, [reports, pending]);
 
   const plan: JevPlan = useMemo(() => {
     let tokens = 0;
@@ -158,7 +161,7 @@ export function useJevLabels(
       while (nextChunk < chunks.length && !cancelRef.current && !fatal && !stopMessage) {
         const chunk = chunks[nextChunk++];
         const qIndex = chunk.questions.map((q) => questions.indexOf(q));
-        const items = chunk.indices.map((i) => ({ key: stateHashes[i], state: states[i] }));
+        const items = chunk.indices.map((i) => ({ key: keys[i], state: states[i] }));
         let res: Response;
         try {
           res = await fetch("/api/jev", {
@@ -225,7 +228,7 @@ export function useJevLabels(
       error: fatal,
       message: stopMessage ?? (cancelRef.current ? "Cancelled: answers so far are kept" : null),
     });
-  }, [plan, groups, run.running, questions, qHashes, states, stateHashes, config.accessToken, config.userApiKey, onSpend]);
+  }, [plan, groups, run.running, questions, qHashes, states, keys, config.accessToken, config.userApiKey, onSpend]);
 
   const cancel = useCallback(() => {
     cancelRef.current = true;

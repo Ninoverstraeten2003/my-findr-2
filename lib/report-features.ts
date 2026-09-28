@@ -37,15 +37,20 @@ const round = (x: number, digits = 0) => {
 
 const CONFIDENCE_WORDS: Record<number, string> = { 3: "high", 2: "medium", 1: "low" };
 const WINDOW_MS = 30 * 60 * 1000;
+/** Reports listed on each side of the one being asked about. */
+const NEIGHBOURS_EACH_SIDE = 3;
 
 const CONTEXT =
-  "One Apple Find My location report for a Bluetooth tracker tag, compared with the reports around it. " +
-  "The position comes from whichever nearby iPhone heard the tag. Distances are straight lines. " +
-  "min_speed values are the lowest speed that could explain a move (straight-line distance minus both accuracy radii, divided by time); the real speed may be higher.";
+  "One Apple Find My location report for a Bluetooth tracker tag (\"this\"), with the reports just before and after it. " +
+  "Each position comes from whichever nearby iPhone heard the tag, with its own accuracy radius and Apple confidence. " +
+  "Neighbours are listed nearest in time first. dist_m, east_m and north_m are straight-line offsets from this report. " +
+  "min_speed_kmh is the lowest speed that could explain the move between this report and that neighbour " +
+  "(distance minus both accuracy radii, divided by the time between them); the real speed may be higher.";
 
 /**
- * Builds one Jev state string per report. `reports` must be sorted by seen time (as the app keeps them).
- * The strings are deterministic, so their hash doubles as a cache key.
+ * Builds one Jev description per report: the report itself plus the raw facts of its nearest reports in time,
+ * so Jev can judge consistency itself (no glitch rules of ours). `reports` must be sorted by seen time.
+ * Only relative facts are included: never coordinates.
  */
 export function buildReportStates(reports: DeviceReport[]): string[] {
   const pts = reports.map((r) => ({
@@ -67,66 +72,55 @@ export function buildReportStates(reports: DeviceReport[]): string[] {
     return round((lower / dt) * 3.6, 1);
   };
 
+  const neighbour = (i: number, j: number, side: "before" | "after") => {
+    // Offsets in metres from report i (small-distance approximation is fine at these scales).
+    const kx = 111_320 * Math.cos((pts[i].lat * Math.PI) / 180);
+    return {
+      [side === "before" ? "min_before" : "min_after"]: round(Math.abs(pts[i].t - pts[j].t) / 60000, 1),
+      dist_m: round(dist(i, j)),
+      east_m: round((pts[j].lon - pts[i].lon) * kx, -1),
+      north_m: round((pts[j].lat - pts[i].lat) * 110_540, -1),
+      accuracy_m: pts[j].acc,
+      apple_confidence: CONFIDENCE_WORDS[pts[j].conf] ?? "unknown",
+      min_speed_kmh: minSpeedKmh(i, j),
+    };
+  };
+
   let lo = 0;
   let hi = 0;
 
   return pts.map((p, i) => {
-    const hasPrev = i > 0;
-    const hasNext = i < pts.length - 1;
-
-    // Sliding ±30 min window (pts are time-sorted).
+    // Sliding ±30 min window (pts are time-sorted), summarised with medians only.
     while (pts[lo].t < p.t - WINDOW_MS) lo++;
     if (hi < i) hi = i;
     while (hi + 1 < pts.length && pts[hi + 1].t <= p.t + WINDOW_MS) hi++;
     const others: number[] = [];
     for (let j = lo; j <= hi; j++) if (j !== i) others.push(j);
 
+    const before: ReturnType<typeof neighbour>[] = [];
+    for (let j = i - 1; j >= 0 && before.length < NEIGHBOURS_EACH_SIDE; j--) before.push(neighbour(i, j, "before"));
+    const after: ReturnType<typeof neighbour>[] = [];
+    for (let j = i + 1; j < pts.length && after.length < NEIGHBOURS_EACH_SIDE; j++) after.push(neighbour(i, j, "after"));
+
     const features: Record<string, unknown> = {
-      seen_local: new Date(p.t).toLocaleString("en-GB", {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      accuracy_m: p.acc,
-      apple_confidence: CONFIDENCE_WORDS[p.conf] ?? "unknown",
-      gap_prev_min: hasPrev ? round((p.t - pts[i - 1].t) / 60000, 1) : null,
-      gap_next_min: hasNext ? round((pts[i + 1].t - p.t) / 60000, 1) : null,
-      dist_prev_m: hasPrev ? round(dist(i, i - 1)) : null,
-      dist_next_m: hasNext ? round(dist(i, i + 1)) : null,
-      min_speed_from_prev_kmh: hasPrev ? minSpeedKmh(i - 1, i) : null,
-      min_speed_to_next_kmh: hasNext ? minSpeedKmh(i, i + 1) : null,
+      this: {
+        seen_local: new Date(p.t).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }),
+        accuracy_m: p.acc,
+        apple_confidence: CONFIDENCE_WORDS[p.conf] ?? "unknown",
+        ...(p.received ? { delay_until_server_min: round((p.received - p.t) / 60000) } : {}),
+      },
+      before,
+      after,
+      reports_within_30min: others.length,
     };
-
-    if (hasPrev && hasNext) {
-      const out = Math.min(dist(i, i - 1), dist(i, i + 1));
-      // Same idea as min_speed: only count the part of the jump that the accuracy radii can't explain.
-      const outBeyondAccuracy = Math.min(
-        dist(i, i - 1) - p.acc - pts[i - 1].acc,
-        dist(i, i + 1) - p.acc - pts[i + 1].acc,
-      );
-      features.prev_to_next_m = round(dist(i - 1, i + 1));
-      // Out-and-back: this point sits clearly away from both neighbours while they sit close to each other.
-      features.jumps_away_and_back = outBeyondAccuracy > 300 && dist(i - 1, i + 1) < 0.3 * out;
-    }
-
-    features.other_reports_within_30min = others.length;
     if (others.length > 0) {
       const cLat = median(others.map((j) => pts[j].lat));
       const cLon = median(others.map((j) => pts[j].lon));
-      features.dist_to_nearby_median_m = round(haversineM(p.lat, p.lon, cLat, cLon));
-      features.nearby_spread_m = round(median(others.map((j) => haversineM(pts[j].lat, pts[j].lon, cLat, cLon))));
-      features.nearby_median_accuracy_m = round(median(others.map((j) => pts[j].acc)));
-      const first = Math.min(lo, i);
-      const last = Math.max(hi, i);
-      if (last > first) {
-        const spanS = (pts[last].t - pts[first].t) / 1000;
-        const net = Math.max(0, dist(first, last) - pts[first].acc - pts[last].acc);
-        features.window_net_move_m = round(dist(first, last));
-        features.window_min_speed_kmh = spanS > 0 ? round((net / spanS) * 3.6, 1) : null;
-      }
+      features.dist_to_median_of_30min_reports_m = round(haversineM(p.lat, p.lon, cLat, cLon));
+      features.median_spread_of_30min_reports_m = round(
+        median(others.map((j) => haversineM(pts[j].lat, pts[j].lon, cLat, cLon))),
+      );
     }
-
-    if (p.received) features.delay_until_server_min = round((p.received - p.t) / 60000);
 
     return `${CONTEXT}\n${JSON.stringify(features)}`;
   });
