@@ -39,6 +39,7 @@ export interface AppSettings {
   days: number;
   showHistory: boolean;
   showDirectionArrows?: boolean;
+  simplifyTrail?: boolean;
   filterLowQuality?: boolean;
   filterMinConfidence?: number;
   filterMaxAccuracy?: number;

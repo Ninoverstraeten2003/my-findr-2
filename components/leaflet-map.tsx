@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
 import { markSvg, type JevLabel } from "@/lib/jev";
 import { reportKey } from "@/lib/report-features";
+import { buildTrail } from "@/lib/trail";
 
 // Confidence-based radius: higher confidence = larger, more prominent dot
 function confidenceToRadius(confidence: number): number {
@@ -38,6 +39,26 @@ function confidenceLabel(confidence: number): string {
 }
 
 // Accuracy label helper – describes iPhone GPS quality
+const TRAIL_LANE_OFFSET_PX = 4;
+
+/** Shifts a line a few screen pixels to the right of its direction of travel (recomputed per zoom). */
+function offsetRight(map: L.Map, path: L.LatLngTuple[], px: number): L.LatLngTuple[] {
+  const pts = path.map((ll) => map.latLngToLayerPoint(ll));
+  const n = pts.length;
+  if (n < 2) return path;
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(n - 1, i + 1)];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return path[i];
+    // Screen y points down, so the right-hand normal of (dx, dy) is (-dy, dx).
+    const ll = map.layerPointToLatLng(L.point(p.x + (-dy / len) * px, p.y + (dx / len) * px));
+    return [ll.lat, ll.lng] as L.LatLngTuple;
+  });
+}
+
 function accuracyLabel(accuracy: number): string {
   if (accuracy <= 10) return "Excellent";
   if (accuracy <= 35) return "Good";
@@ -139,6 +160,8 @@ interface LeafletMapProps {
   jevTooltips?: Map<string, string>;
   /** Fly to a report and open its tooltip; nonce lets the same report be focused again. */
   focusRequest?: { key: string; nonce: number } | null;
+  /** Collapse stays, route around spikes and curve the trail line (dots are unaffected). */
+  simplifyTrail?: boolean;
 }
 
 export default function LeafletMap({
@@ -156,8 +179,22 @@ export default function LeafletMap({
   jevLabels,
   jevTooltips,
   focusRequest,
+  simplifyTrail = true,
 }: LeafletMapProps) {
   const markersByKeyRef = useRef<Map<string, L.Layer>>(new Map());
+  // Direction arrows live in their own layer: they're placed by screen distance, so they're redrawn on move/zoom.
+  const arrowLayerRef = useRef<L.LayerGroup | null>(null);
+  const arrowPathsRef = useRef<L.LatLngTuple[][]>([]);
+  const drawArrowsRef = useRef<() => void>(() => {});
+  // Trail lines are also redrawn per zoom: in simplified mode each trip is offset a few pixels to the right of
+  // travel ("keep right"), so a trip and its return along the same road show as two lanes.
+  const trailLayerRef = useRef<L.LayerGroup | null>(null);
+  const trailBaseRef = useRef<{ paths: L.LatLngTuple[][]; offset: boolean; style: L.PolylineOptions }>({
+    paths: [],
+    offset: false,
+    style: {},
+  });
+  const drawTrailRef = useRef<() => void>(() => {});
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -218,7 +255,15 @@ export default function LeafletMap({
 
     // Tile layer managed in separate useEffect
 
+    // Trail pane sits under the report dots (overlayPane is 400).
+    map.createPane("trail").style.zIndex = "390";
+    trailLayerRef.current = L.layerGroup().addTo(map);
     const layerGroup = L.layerGroup().addTo(map);
+    arrowLayerRef.current = L.layerGroup().addTo(map);
+    const redrawTrail = () => drawTrailRef.current();
+    const redrawArrows = () => drawArrowsRef.current();
+    map.on("zoomend", redrawTrail);
+    map.on("moveend", redrawArrows);
 
     mapRef.current = map;
     layerGroupRef.current = layerGroup;
@@ -231,9 +276,13 @@ export default function LeafletMap({
     return () => {
       map.off("movestart", handleMoveStart);
       map.off("moveend", handleMoveEnd);
+      map.off("zoomend", redrawTrail);
+      map.off("moveend", redrawArrows);
       map.remove();
       mapRef.current = null;
       layerGroupRef.current = null;
+      arrowLayerRef.current = null;
+      trailLayerRef.current = null;
     };
     // Only run on mount/unmount - we handle view changes via setView below
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,8 +472,63 @@ export default function LeafletMap({
       }
     }
 
-    // Trail polyline — keep true chronological order; absorbed dots snap to cluster location
-    if (showHistory && filteredReports.length > 1) {
+    // Trail line. Order is always true seen-time order; "simplify" only changes how the line is routed
+    // (stays collapsed, spikes routed around, curves). Every dot is still drawn below.
+    const lineColor = useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor;
+    const lineStyle: L.PolylineOptions = {
+      dashArray: "6, 12",
+      weight: 2,
+      opacity: 0.5,
+      color: lineColor,
+      interactive: false,
+      pane: "trail",
+    };
+    const trailPaths: L.LatLngTuple[][] = [];
+
+    if (showHistory && filteredReports.length > 1 && simplifyTrail) {
+      const valid = filteredReports
+        .map((r) => r.decrypedPayload)
+        .filter((p) => !isNaN(p.location.latitude) && !isNaN(p.location.longitude));
+      const trail = buildTrail(
+        valid.map((p) => ({
+          lat: p.location.latitude,
+          lon: p.location.longitude,
+          acc: p.location.accuracy,
+          t: new Date(p.date).getTime(),
+        })),
+        bestClusterLoc ? [bestClusterLoc.lat, bestClusterLoc.lon] : undefined,
+      );
+
+      // Stay areas: where the tag sat still, drawn in real metres under the dots.
+      const fmtTime = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      for (const stay of trail.stays) {
+        const mins = Math.round((stay.end - stay.start) / 60000);
+        const duration = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
+        L.circle(stay.center, {
+          radius: stay.radiusM,
+          color: deviceColor,
+          weight: 1.5,
+          opacity: 0.5,
+          dashArray: "2, 5",
+          fillColor: deviceColor,
+          fillOpacity: 0.05,
+          pane: "trail",
+        })
+          .bindTooltip(
+            `<div class="jev-tip"><div class="jev-tip-row jev-tip-active"><span class="jev-tip-q">Stayed</span> ${duration}</div>` +
+              `<div class="jev-tip-detail">${fmtTime(stay.start)} – ${fmtTime(stay.end)}<br/>${stay.indices.length} reports within ~${Math.round(stay.radiusM)} m</div></div>`,
+            { direction: "top", opacity: 1, className: "custom-leaflet-tooltip", sticky: true },
+          )
+          .addTo(layerGroup);
+      }
+
+      trailPaths.push(...trail.paths);
+      // Spikes keep a faint stub so they're still connected, without dragging the line out and back.
+      for (const stub of trail.spikeStubs) {
+        L.polyline(stub, { dashArray: "1, 6", weight: 1, opacity: 0.35, color: lineColor, interactive: false, pane: "trail" }).addTo(layerGroup);
+      }
+    } else if (showHistory && filteredReports.length > 1) {
+      // Raw trail: every report in order; absorbed dots snap to the cluster location.
       const latlngs: L.LatLngTuple[] = filteredReports
         .map((r, idx) => {
           if (absorbedIndices.has(idx) && bestClusterLoc) {
@@ -437,64 +541,17 @@ export default function LeafletMap({
         })
         .filter((ll) => !isNaN(ll[0]) && !isNaN(ll[1]));
 
-      if (latlngs.length > 1) {
-        // Deduplicate consecutive identical points to keep the line clean
-        const deduped: L.LatLngTuple[] = [latlngs[0]];
-        for (let i = 1; i < latlngs.length; i++) {
-          if (latlngs[i][0] !== latlngs[i - 1][0] || latlngs[i][1] !== latlngs[i - 1][1]) {
-            deduped.push(latlngs[i]);
-          }
-        }
-
-      if (deduped.length > 1) {
-        L.polyline(deduped, {
-          dashArray: "6, 12",
-          weight: 2,
-          opacity: 0.5,
-          color: useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor,
-        }).addTo(layerGroup);
-
-        // Draw directional arrows on segments
-        if (showDirectionArrows) {
-          const getBearing = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-            const dLon = ((lon2 - lon1) * Math.PI) / 180;
-            const lat1Rad = (lat1 * Math.PI) / 180;
-            const lat2Rad = (lat2 * Math.PI) / 180;
-            const y = Math.sin(dLon) * Math.cos(lat2Rad);
-            const x =
-              Math.cos(lat1Rad) * Math.sin(lat2Rad) -
-              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
-            const brng = (Math.atan2(y, x) * 180) / Math.PI;
-            return (brng + 360) % 360;
-          };
-
-          for (let i = 0; i < deduped.length - 1; i++) {
-            const p1 = deduped[i];
-            const p2 = deduped[i + 1];
-            const dist = haversineM(p1[0], p1[1], p2[0], p2[1]);
-            
-            // Only draw arrows for long distance segments (> 100m)
-            if (dist > 100) {
-              const midLat = (p1[0] + p2[0]) / 2;
-              const midLon = (p1[1] + p2[1]) / 2;
-              const bearing = getBearing(p1[0], p1[1], p2[0], p2[1]);
-              const arrowIcon = L.divIcon({
-                className: "trail-arrow-marker",
-                html: `<div style="transform: rotate(${bearing}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${useDarkMarkers ? "rgba(255,255,255,0.7)" : deviceColor}; opacity: 0.8;">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="18 15 12 9 6 15"></polyline>
-                  </svg>
-                </div>`,
-                iconSize: [12, 12],
-                iconAnchor: [6, 6],
-              });
-              L.marker([midLat, midLon], { icon: arrowIcon, interactive: false }).addTo(layerGroup);
-            }
-          }
+      // Deduplicate consecutive identical points to keep the line clean
+      const deduped: L.LatLngTuple[] = latlngs.length ? [latlngs[0]] : [];
+      for (let i = 1; i < latlngs.length; i++) {
+        if (latlngs[i][0] !== latlngs[i - 1][0] || latlngs[i][1] !== latlngs[i - 1][1]) {
+          deduped.push(latlngs[i]);
         }
       }
-      }
+      if (deduped.length > 1) trailPaths.push(deduped);
     }
+    trailBaseRef.current = { paths: trailPaths, offset: simplifyTrail, style: lineStyle };
+    drawTrailRef.current();
 
     // Report markers — skip absorbed indices (they're part of the latest cluster)
     if (showHistory && filteredReports.length > 0) {
@@ -736,6 +793,8 @@ export default function LeafletMap({
         markersByKeyRef.current.set(reportKey(filteredReports[idx]), marker);
       }
     }
+
+    drawArrowsRef.current();
   }, [
     filteredReports,
     guessedLocation,
@@ -746,7 +805,83 @@ export default function LeafletMap({
     onCopyLocation,
     jevLabels,
     jevTooltips,
+    simplifyTrail,
   ]);
+
+  drawTrailRef.current = () => {
+    const map = mapRef.current;
+    const layer = trailLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    const { paths, offset, style } = trailBaseRef.current;
+    const drawn = offset ? paths.map((p) => offsetRight(map, p, TRAIL_LANE_OFFSET_PX)) : paths;
+    for (const p of drawn) L.polyline(p, style).addTo(layer);
+    arrowPathsRef.current = drawn;
+  };
+
+  // Direction arrows spaced by screen distance (~every 80 px along the line), only where the map is visible.
+  drawArrowsRef.current = () => {
+    const map = mapRef.current;
+    const layer = arrowLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    if (!showDirectionArrows || !showHistory) return;
+
+    const SPACING_PX = 80;
+    const MIN_PATH_PX = 40;
+    const MAX_ARROWS = 300;
+    const view = map.getBounds().pad(0.1);
+    const color = useDarkMarkers ? "rgba(255,255,255,0.7)" : deviceColor;
+    let placed = 0;
+
+    for (const path of arrowPathsRef.current) {
+      const px = path.map((ll) => map.latLngToLayerPoint(ll));
+      const segLen: number[] = [];
+      let total = 0;
+      for (let i = 1; i < px.length; i++) {
+        const d = px[i].distanceTo(px[i - 1]);
+        segLen.push(d);
+        total += d;
+      }
+      if (total < MIN_PATH_PX) continue;
+
+      // Short paths get one arrow in the middle; longer ones one every SPACING_PX, centred.
+      const count = Math.max(1, Math.floor(total / SPACING_PX));
+      const offset = (total - (count - 1) * SPACING_PX) / 2;
+      let seg = 0;
+      let segStart = 0;
+      for (let k = 0; k < count && placed < MAX_ARROWS; k++) {
+        const target = count === 1 ? total / 2 : offset + k * SPACING_PX;
+        while (seg < segLen.length - 1 && segStart + segLen[seg] < target) {
+          segStart += segLen[seg];
+          seg++;
+        }
+        const a = px[seg];
+        const b = px[seg + 1];
+        const f = segLen[seg] > 0 ? (target - segStart) / segLen[seg] : 0;
+        const at = L.point(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f);
+        const latlng = map.layerPointToLatLng(at);
+        if (!view.contains(latlng)) continue;
+        // Chevron points up; rotate to the screen direction of travel.
+        const angle = (Math.atan2(b.x - a.x, -(b.y - a.y)) * 180) / Math.PI;
+        L.marker(latlng, {
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: "trail-arrow-marker",
+            html: `<div style="transform: rotate(${angle}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${color}; opacity: 0.8;">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            </div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+          }),
+        }).addTo(layer);
+        placed++;
+      }
+    }
+  };
 
   // Fly to a report picked in the Jev panel and open its tooltip.
   useEffect(() => {

@@ -303,6 +303,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           deviceColor={deviceColor}
           showHistory={showHistory}
           showDirectionArrows={settings.showDirectionArrows !== false}
+          simplifyTrail={settings.simplifyTrail !== false}
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
           jevLabels={jevConfig.enabled ? jevLabels : undefined}

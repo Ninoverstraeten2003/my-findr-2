@@ -12,6 +12,7 @@ export const defaultSettings: AppSettings = {
   days: 1,
   showHistory: true,
   showDirectionArrows: true,
+  simplifyTrail: true,
   filterLowQuality: true,
   filterMinConfidence: 1,
   filterMaxAccuracy: 200,

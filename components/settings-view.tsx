@@ -818,6 +818,27 @@ export default function SettingsView() {
               </div>
             )}
 
+            {(settingsForm.showHistory ?? true) && (
+              <div className="flex items-center justify-between pl-4 border-l-2 border-muted">
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="simplifyTrail">Simplify Trail</Label>
+                  <span className="text-xs text-muted-foreground">
+                    Merge time spent in one place, route the line around glitch spikes and curve it so return trips
+                    don&apos;t overlap. Every report dot stays on the map.
+                  </span>
+                </div>
+                <Switch
+                  id="simplifyTrail"
+                  checked={settingsForm.simplifyTrail ?? true}
+                  onCheckedChange={(checked) => {
+                    const updated = { ...settingsForm, simplifyTrail: checked };
+                    setSettingsForm(updated);
+                    updateStoredSettings(updated);
+                  }}
+                />
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="pollInterval">Refresh Interval</Label>
