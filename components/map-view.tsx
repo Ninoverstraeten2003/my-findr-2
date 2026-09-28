@@ -126,6 +126,10 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       return;
     }
 
+    // Changing History Length starts a new query with no data yet. Don't record that empty moment as the
+    // previous length, or the range stays at the old count and hides the newest reports when data arrives.
+    if (reports.length === 0 && isLoading) return;
+
     const deviceIdChanged = lastSyncedDeviceIdRef.current !== currentDevice.id;
 
     if (reports.length > 0) {
