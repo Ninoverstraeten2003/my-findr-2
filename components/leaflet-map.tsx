@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
+import { markSvg, type JevLabel } from "@/lib/jev";
+import { reportKey } from "@/lib/report-features";
 
 // Confidence-based radius: higher confidence = larger, more prominent dot
 function confidenceToRadius(confidence: number): number {
@@ -99,16 +101,22 @@ function adjustColorForFreshness(hex: string, freshness: number, isDarkTheme: bo
 
 
 
+// CARTO basemaps now require an API key, so dark/light use Esri's keyless Canvas maps
+// (base + separate label layer; native tiles stop at zoom 16 and are upscaled beyond that).
+const ESRI_CANVAS = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
 const TILE_LAYERS = {
-  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  light: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  dark: `${ESRI_CANVAS}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  darkLabels: `${ESRI_CANVAS}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+  light: `${ESRI_CANVAS}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  lightLabels: `${ESRI_CANVAS}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
   satellite:
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 };
+const CANVAS_MAX_NATIVE_ZOOM = 16;
 
 const ATTRIBUTIONS = {
-  carto: '&copy; <a href="https://carto.com">CARTO</a>',
+  esriCanvas: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
   esri: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
   osm: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 };
@@ -125,6 +133,12 @@ interface LeafletMapProps {
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   onCopyLocation: (lat: number, lon: number) => void;
   isVisible: boolean;
+  /** Active Jev question's label per report key: sets the dot's shape (never hides a dot). */
+  jevLabels?: Map<string, JevLabel>;
+  /** Jev answers for every question per report key, shown in the tooltip. */
+  jevTooltips?: Map<string, string>;
+  /** Fly to a report and open its tooltip; nonce lets the same report be focused again. */
+  focusRequest?: { key: string; nonce: number } | null;
 }
 
 export default function LeafletMap({
@@ -139,12 +153,16 @@ export default function LeafletMap({
   mapTheme,
   onCopyLocation,
   isVisible,
+  jevLabels,
+  jevTooltips,
+  focusRequest,
 }: LeafletMapProps) {
+  const markersByKeyRef = useRef<Map<string, L.Layer>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const isProgrammaticMoveRef = useRef(false);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const tileLayerRef = useRef<L.LayerGroup | null>(null);
   const hasInitialFitRef = useRef(false);
 
   const isDark =
@@ -283,33 +301,44 @@ export default function LeafletMap({
     }
 
     let url = TILE_LAYERS.light;
-    let attr = ATTRIBUTIONS.carto;
+    let labelsUrl: string | null = TILE_LAYERS.lightLabels;
+    let attr = ATTRIBUTIONS.esriCanvas;
 
     switch (activeTheme) {
       case "dark":
         url = TILE_LAYERS.dark;
-        attr = ATTRIBUTIONS.carto;
+        labelsUrl = TILE_LAYERS.darkLabels;
+        attr = ATTRIBUTIONS.esriCanvas;
         break;
       case "light":
         url = TILE_LAYERS.light;
-        attr = ATTRIBUTIONS.carto;
+        labelsUrl = TILE_LAYERS.lightLabels;
+        attr = ATTRIBUTIONS.esriCanvas;
         break;
       case "satellite":
         url = TILE_LAYERS.satellite;
+        labelsUrl = null;
         attr = ATTRIBUTIONS.esri;
         break;
       case "streets":
         url = TILE_LAYERS.streets;
+        labelsUrl = null;
         attr = ATTRIBUTIONS.osm;
         break;
     }
 
-    const layer = L.tileLayer(url, {
+    const nativeZoom = labelsUrl ? { maxNativeZoom: CANVAS_MAX_NATIVE_ZOOM, maxZoom: 19 } : {};
+    const base = L.tileLayer(url, {
       attribution: attr,
       className: activeTheme === "dark" ? "map-tiles-dark" : "",
+      zIndex: 1,
+      ...nativeZoom,
     });
+    const layer = L.layerGroup([base]);
+    if (labelsUrl) {
+      layer.addLayer(L.tileLayer(labelsUrl, { zIndex: 2, ...nativeZoom }));
+    }
     layer.addTo(mapRef.current);
-    layer.bringToBack();
     tileLayerRef.current = layer;
   }, [activeTheme]);
 
@@ -319,6 +348,7 @@ export default function LeafletMap({
     if (!layerGroup) return;
 
     layerGroup.clearLayers();
+    markersByKeyRef.current.clear();
 
     // --- Haversine helper (meters between two lat/lon points) ---
     const haversineM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -484,19 +514,41 @@ export default function LeafletMap({
         const fillOpacity = confidenceToOpacity(confidence);
         const radius = confidenceToRadius(confidence);
 
-        // Main dot – sized and opaque by confidence, color saturation/lightness adjusted by freshness
-        const marker = L.circleMarker(
-          [location.latitude, location.longitude],
-          {
-            color: useDarkMarkers
-              ? `rgba(255,255,255,${confidence >= 2 ? 0.4 : 0.2})`
-              : `rgba(0,0,0,${confidence >= 2 ? 0.15 : 0.08})`,
-            weight: confidence >= 2 ? 1 : 0.5,
-            fillColor: adjustColorForFreshness(deviceColor, freshness, useDarkMarkers),
-            fillOpacity,
-            radius,
-          }
-        );
+        const key = reportKey(report);
+        const jevLabel = jevLabels?.get(key);
+        const fillColor = adjustColorForFreshness(deviceColor, freshness, useDarkMarkers);
+
+        // Main dot – sized and opaque by confidence, color saturation/lightness adjusted by freshness.
+        // A Jev label other than "dot" swaps the circle for a shape in the same color, so device colors stay intact.
+        let marker: L.CircleMarker | L.Marker;
+        if (jevLabel && jevLabel.mark !== "dot") {
+          const size = Math.max(14, Math.round(radius * 2 + 6));
+          const outline = useDarkMarkers ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.55)";
+          marker = L.marker([location.latitude, location.longitude], {
+            icon: L.divIcon({
+              className: "jev-mark",
+              html: markSvg(jevLabel.mark, fillColor, outline, size),
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2],
+            }),
+            opacity: Math.max(0.55, fillOpacity),
+            keyboard: false,
+          });
+        } else {
+          marker = L.circleMarker(
+            [location.latitude, location.longitude],
+            {
+              color: useDarkMarkers
+                ? `rgba(255,255,255,${confidence >= 2 ? 0.4 : 0.2})`
+                : `rgba(0,0,0,${confidence >= 2 ? 0.15 : 0.08})`,
+              weight: confidence >= 2 ? 1 : 0.5,
+              fillColor,
+              fillOpacity,
+              radius,
+            }
+          );
+        }
+        markersByKeyRef.current.set(key, marker);
 
         // Confidence badge color
         const confBadgeColor = confidence === 3 ? "#22c55e" : confidence === 2 ? "#eab308" : confidence === 1 ? "#f97316" : "#ef4444";
@@ -529,6 +581,7 @@ export default function LeafletMap({
             <!-- Pin -->
             <div class="watch-pin" style="background-color: ${deviceColor};"></div>
           </div>
+          ${jevTooltips?.get(key) ?? ""}
         `;
 
         marker.bindTooltip(tooltipContent, {
@@ -666,6 +719,7 @@ export default function LeafletMap({
             <!-- Pin -->
             <div class="watch-pin" style="background-color: ${deviceColor};"></div>
           </div>
+          ${jevTooltips?.get(reportKey(latestReport)) ?? ""}
         `;
 
         marker.bindTooltip(latestTooltip, {
@@ -677,6 +731,10 @@ export default function LeafletMap({
       }
 
       marker.addTo(layerGroup);
+      // Reports merged into the latest marker focus that marker.
+      for (const idx of absorbedIndices) {
+        markersByKeyRef.current.set(reportKey(filteredReports[idx]), marker);
+      }
     }
   }, [
     filteredReports,
@@ -686,7 +744,20 @@ export default function LeafletMap({
     showDirectionArrows,
     useDarkMarkers,
     onCopyLocation,
+    jevLabels,
+    jevTooltips,
   ]);
+
+  // Fly to a report picked in the Jev panel and open its tooltip.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusRequest) return;
+    const layer = markersByKeyRef.current.get(focusRequest.key) as (L.Marker | L.CircleMarker) | undefined;
+    if (!layer) return;
+    const target = layer.getLatLng();
+    map.flyTo(target, Math.max(map.getZoom(), 16), { duration: 0.6 });
+    map.once("moveend", () => layer.openTooltip());
+  }, [focusRequest]);
 
 
   // Calculate the expected center point (either latest device or bounds center)
@@ -931,6 +1002,37 @@ export default function LeafletMap({
           margin-top: -32px;
           z-index: 11;
         }
+
+        /* Jev labels */
+        .leaflet-div-icon.jev-mark {
+          background: transparent;
+          border: none;
+        }
+        .jev-mark svg { display: block; }
+        .jev-tip {
+          margin: 6px auto 0;
+          width: 190px;
+          max-width: 70vw;
+          padding: 6px 8px;
+          border-radius: 8px;
+          font-size: 11px;
+          line-height: 1.3;
+          white-space: normal;
+          color: ${useDarkMarkers ? "#ffffff" : "#000000"};
+          background-color: ${
+            activeTheme === "light" || activeTheme === "streets"
+              ? "rgba(255, 255, 255, 0.92)"
+              : "rgba(15, 15, 15, 0.92)"
+          };
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(128, 128, 128, 0.3);
+        }
+        .jev-tip-row + .jev-tip-row { margin-top: 4px; }
+        .jev-tip-q { font-weight: 600; opacity: 0.7; }
+        .jev-tip-active .jev-tip-q { opacity: 1; }
+        .jev-tip-active { font-weight: 600; }
+        .jev-tip-detail { font-weight: 400; opacity: 0.65; font-size: 10px; }
 
         /* Center Pin */
         .watch-pin {

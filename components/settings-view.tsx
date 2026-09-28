@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { useTheme } from "next-themes";
 import { cn, hexToRgba } from "@/lib/utils";
+import JevSettingsCard from "@/components/jev-settings-card";
 
 
 const DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90, 365, 9999];
@@ -938,6 +939,8 @@ export default function SettingsView() {
           </div>
         </CardContent>
       </Card>
+
+      <JevSettingsCard />
 
       {/* Devices */}
       <Card>

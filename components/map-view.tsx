@@ -10,6 +10,10 @@ import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
 import TimelineControl from "@/components/timeline-control";
+import JevPanel from "@/components/jev-panel";
+import { useJevConfig } from "@/lib/use-jev-config";
+import { useJevLabels } from "@/lib/use-jev-labels";
+import { jevTooltipHtml, labelAnswer } from "@/lib/jev";
 import { Download, Copy, Settings, Loader2, Check, Map as MapIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
@@ -216,6 +220,35 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
   const deviceColor = currentDevice?.hexColor || "#0ea5e9";
 
+  // Jev labels: shapes and tooltip notes on the dots in view (never removes a dot).
+  const [jevConfig, updateJevConfig] = useJevConfig();
+  const addJevSpend = useCallback(
+    (usd: number) => updateJevConfig((c) => ({ ...c, spentUsd: c.spentUsd + usd })),
+    [updateJevConfig],
+  );
+  const jev = useJevLabels(
+    jevConfig.enabled ? filteredReports : EMPTY_REPORTS,
+    jevConfig,
+    addJevSpend,
+    currentDevice?.id,
+  );
+  const jevLabels = useMemo(
+    () => jev.labelsFor(jevConfig.activeQuestionId),
+    [jev.labelsFor, jevConfig.activeQuestionId],
+  );
+  const jevTooltips = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [key, rec] of jev.answers) {
+      const rows = jev.questions.flatMap((q) => {
+        const l = labelAnswer(q, rec[q.id]);
+        return l ? [{ title: q.title, label: l.label, detail: l.detail, active: q.id === jevConfig.activeQuestionId }] : [];
+      });
+      out.set(key, jevTooltipHtml(rows));
+    }
+    return out;
+  }, [jev.answers, jev.questions, jevConfig.activeQuestionId]);
+  const [focusRequest, setFocusRequest] = useState<{ key: string; nonce: number } | null>(null);
+
   const displayLocation = useMemo(() => {
     if (showHistory && filteredReports.length > 0) {
       const last = filteredReports[filteredReports.length - 1];
@@ -255,7 +288,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    // `isolate` keeps Leaflet's high z-indexes inside the map so drawers and dialogs stay on top.
+    <div className="relative isolate h-full w-full overflow-hidden">
       {/* Map */}
       <div
         className={cn("h-full w-full", isSwitchingDevice && "pointer-events-none")}
@@ -271,6 +305,9 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           showDirectionArrows={settings.showDirectionArrows !== false}
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
+          jevLabels={jevConfig.enabled ? jevLabels : undefined}
+          jevTooltips={jevConfig.enabled ? jevTooltips : undefined}
+          focusRequest={focusRequest}
           onCopyLocation={(lat, lon) => {
             const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
             navigator.clipboard.writeText(url);
@@ -286,6 +323,20 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         currentDevice={currentDevice}
         isLoading={isLoading}
       />
+
+      {/* Jev labels */}
+      {currentDevice && (
+        <JevPanel
+          reports={filteredReports}
+          deviceName={currentDevice.name}
+          deviceColor={deviceColor}
+          config={jevConfig}
+          jev={jev}
+          onSelectQuestion={(id) => updateJevConfig((c) => ({ ...c, activeQuestionId: id }))}
+          onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
 
       {/* Loading Indicator */}
       {isLoading && (
