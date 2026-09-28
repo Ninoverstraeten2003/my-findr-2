@@ -245,17 +245,15 @@ export function labelAnswer(q: JevQuestionConfig, a: JevRawAnswer | undefined): 
   const ranked = Object.entries(probs).sort((x, y) => y[1] - x[1]);
 
   if (a.type === "score") {
-    // Label with the level Jev found most likely (like a choice). The score is a probability-weighted
-    // average, so when Jev is split (e.g. between "Don't trust" and "Good") rounding it can name a level
-    // Jev didn't favour. The average is still shown, and all levels are listed so a split stays visible.
+    // Label with Jev's own score (its position on the ordered scale), rounded to the nearest level.
+    // Levels are ordered, so the score respects that order and moves smoothly, where the single most
+    // likely level can jump on near-ties. Every level's probability is listed so a split stays visible.
     const maxLevel = q.options.length - 1;
-    const level = ranked.length
-      ? ranked[0][0]
-      : String(Math.max(0, Math.min(maxLevel, Math.round(a.score))));
+    const level = String(Math.max(0, Math.min(maxLevel, Math.round(a.score))));
     const o = opt(level);
     const detail =
-      (ranked.length ? `${ranked.map(([k, p]) => `${opt(k)?.label ?? k} ${pct(p)}`).join(" · ")} · ` : "") +
-      `score ${a.score.toFixed(1)} on 0–${maxLevel}`;
+      `score ${a.score.toFixed(1)} on 0–${maxLevel}` +
+      (ranked.length ? ` · ${ranked.map(([k, p]) => `${opt(k)?.label ?? k} ${pct(p)}`).join(" · ")}` : "");
     return {
       optionKey: level,
       label: o?.label ?? level,
