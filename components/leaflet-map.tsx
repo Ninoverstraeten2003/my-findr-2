@@ -346,6 +346,10 @@ export default function LeafletMap({
     }
   }, [center, showHistory, filteredReports, isVisible]);
 
+  // The delayed fit must use the reports as they are when it runs, not when it was scheduled.
+  const fitRef = useRef(fitMapToState);
+  fitRef.current = fitMapToState;
+
   // Only auto-fit on initial load / device switch, not on poll updates
   useEffect(() => {
     if (hasInitialFitRef.current) return; // Already fitted for this device
@@ -353,7 +357,7 @@ export default function LeafletMap({
     if (isLoading) return; // Wait until every report is in, so the zoom covers all of them
 
     if (isVisible) {
-      setTimeout(() => fitMapToState(), 100);
+      setTimeout(() => fitRef.current(), 100);
     } else {
       fitMapToState();
     }

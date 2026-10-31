@@ -70,7 +70,7 @@ async function decryptReports(
   privateKey: string
 ): Promise<DeviceReport[]> {
   const payloads = [...new Set(reports.map((r) => r.payload))];
-  const known = await getCachedDecrypted(payloads);
+  const known = await getCachedDecrypted(payloads, privateKey);
 
   const missing = payloads.filter((p) => !known.has(p));
   if (missing.length > 0) {
@@ -84,7 +84,7 @@ async function decryptReports(
       known.set(missing[i], d);
       fresh.push([missing[i], d]);
     });
-    void putCachedDecrypted(fresh);
+    void putCachedDecrypted(fresh, privateKey);
   }
 
   const decryptedReports: DeviceReport[] = [];

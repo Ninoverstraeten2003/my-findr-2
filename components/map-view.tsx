@@ -40,6 +40,8 @@ interface MapViewProps {
 }
 
 const EMPTY_REPORTS: any[] = [];
+/** The timeline slider (range filter) is currently disabled in the UI. */
+const TIMELINE_ENABLED = false;
 
 export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const { toast } = useToast();
@@ -209,11 +211,12 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     }
   }, [error, toast]);
 
+  // The range only matters while the timeline slider is shown (it's disabled below). Without it, always use every
+  // loaded report: the range is synced in an effect, so right after a device switch it still holds the previous
+  // device's count for one render, and the map zoomed to that partial (oldest) slice.
   const filteredReports = useMemo(() => {
-    if (reports.length > 0) {
-      return reports.slice(filterRange[0] - 1, filterRange[1]);
-    }
-    return [];
+    if (reports.length === 0) return [];
+    return TIMELINE_ENABLED ? reports.slice(filterRange[0] - 1, filterRange[1]) : reports;
   }, [filterRange, reports]);
 
   useEffect(() => {
