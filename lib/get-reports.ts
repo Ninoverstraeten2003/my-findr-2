@@ -30,14 +30,16 @@ export async function getReportsForDevice(
 export async function getPollerReportsForDevice(
   device: Device,
   pollerApiKey: string,
-  after?: string
+  after?: string,
+  seenAfter?: string
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
   const reports = await fetchPollerReports(
     device.advertismentKey,
     pollerApiKey,
-    after
+    after,
+    seenAfter
   );
 
   return decryptReports(reports, device.privateKey);
@@ -121,14 +123,18 @@ async function fetchDevicesReports(
 async function fetchPollerReports(
   advertisementKey: string,
   apiKey: string,
-  after?: string
+  after?: string,
+  seenAfter?: string
 ): Promise<DeviceReport[]> {
   // URL Encode the key just in case, though it usually is safebase64 or similar
   const encodedKey = encodeURIComponent(advertisementKey);
   let url = `https://findr.ninoverstraeten.com/api/reports/${encodedKey}`;
-  if (after) {
-    url += `?after=${encodeURIComponent(after)}`;
-  }
+  // after = received by the server after this time (only new reports); seen_after = history window
+  const params = new URLSearchParams();
+  if (after) params.set("after", after);
+  if (seenAfter) params.set("seen_after", seenAfter);
+  const query = params.toString();
+  if (query) url += `?${query}`;
 
   let response;
   try {

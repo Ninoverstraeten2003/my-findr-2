@@ -41,8 +41,10 @@ export function useDeviceReports(
         const existingReports =
           queryClient.getQueryData<DeviceReport[]>(queryKey) || [];
 
-        // Find the latest receivedAt from existing reports
+        // Find the latest receivedAt from existing reports (cursor for "only new ones")
         let after: string | undefined;
+        // History window: reports the tag was SEEN in the last N days
+        let seenAfter: string | undefined;
         if (existingReports.length > 0) {
           const latestReceivedAt = existingReports.reduce(
             (latest, r) => {
@@ -55,18 +57,19 @@ export function useDeviceReports(
             after = latestReceivedAt;
           }
         } else {
-          // Initial fetch: Limit the history by the 'days' slider setting
+          // Initial fetch: limit the history by the 'days' setting, on when the tag was seen
           if (days !== 9999) {
-            const afterDate = new Date();
-            afterDate.setDate(afterDate.getDate() - days);
-            after = afterDate.toISOString();
+            const seenDate = new Date();
+            seenDate.setDate(seenDate.getDate() - days);
+            seenAfter = seenDate.toISOString();
           }
         }
 
         const newReports = await getPollerReportsForDevice(
           device,
           pollerApiKey,
-          after
+          after,
+          seenAfter
         );
 
         if (after && existingReports.length > 0) {
