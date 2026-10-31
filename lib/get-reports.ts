@@ -1,5 +1,7 @@
-import { decryptPayload, getAdvertisementKey } from "./decrypt-payload";
-import type { Device, DeviceReport } from "./types";
+import { getAdvertisementKey } from "./decrypt-payload";
+import { getCachedDecrypted, putCachedDecrypted } from "./decrypt-cache";
+import { decryptMany } from "./decrypt-pool";
+import type { DecryptedPayload, Device, DeviceReport } from "./types";
 
 /**
  * Fetch & decrypt reports from the Haystack backend (direct API).
@@ -47,38 +49,57 @@ export async function getPollerReportsForDevice(
 
 // ── shared helpers ──────────────────────────────────────────────────
 
+/** Progress of decrypting reports that weren't cached yet (for the loading indicator). */
+export const DECRYPT_PROGRESS_EVENT = "findr-decrypt-progress";
+export interface DecryptProgress {
+  done: number;
+  total: number;
+}
+
+function reportProgress(done: number, total: number) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<DecryptProgress>(DECRYPT_PROGRESS_EVENT, { detail: { done, total } }));
+}
+
+/**
+ * Decrypts reports using the on-device cache first; only reports never seen on this device are decrypted,
+ * in parallel background workers. Reports that can't be decrypted with the key are dropped (as before).
+ */
 async function decryptReports(
   reports: DeviceReport[],
   privateKey: string
 ): Promise<DeviceReport[]> {
-  const decryptedReports: DeviceReport[] = [];
+  const payloads = [...new Set(reports.map((r) => r.payload))];
+  const known = await getCachedDecrypted(payloads);
 
-  const decryptReport = async (report: DeviceReport) => {
-    try {
-      const decryptedPayload = await decryptPayload(
-        report.payload,
-        privateKey
-      );
-      report.decrypedPayload = decryptedPayload;
-      decryptedReports.push(report);
-    } catch (error) {
-      console.error("Failed to decrypt payload:", error);
-    }
-  };
-
-  for (let i = 0; i < reports.length; i++) {
-    await decryptReport(reports[i]);
-    if (i % 10 === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+  const missing = payloads.filter((p) => !known.has(p));
+  if (missing.length > 0) {
+    reportProgress(0, missing.length);
+    const results = await decryptMany(missing, privateKey, (done) =>
+      reportProgress(done, missing.length)
+    );
+    const fresh: [string, DecryptedPayload][] = [];
+    results.forEach((d, i) => {
+      if (!d) return;
+      known.set(missing[i], d);
+      fresh.push([missing[i], d]);
+    });
+    void putCachedDecrypted(fresh);
   }
 
-  const sortedReports = decryptedReports.sort(
+  const decryptedReports: DeviceReport[] = [];
+  for (const report of reports) {
+    const d = known.get(report.payload);
+    if (!d) continue;
+    report.decrypedPayload = d;
+    decryptedReports.push(report);
+  }
+
+  return decryptedReports.sort(
     (a, b) =>
       new Date(a.decrypedPayload.date).getTime() -
       new Date(b.decrypedPayload.date).getTime()
   );
-  return sortedReports;
 }
 
 async function fetchDevicesReports(

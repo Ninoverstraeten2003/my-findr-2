@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeviceReports } from "@/lib/use-device-reports";
+import { DECRYPT_PROGRESS_EVENT, type DecryptProgress } from "@/lib/get-reports";
 import { useSettings } from "@/lib/use-settings";
 import { calculateBestLocation } from "@/lib/decrypt-payload";
 import { exportKML } from "@/lib/export-kml";
@@ -96,6 +97,17 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   }, [reportsData, settings.filterLowQuality, settings.filterMinConfidence, settings.filterMaxAccuracy]);
 
   const isLoading = isSwrLoading || isValidating;
+
+  // Progress of decrypting reports not cached on this device yet (shown in the loading pill).
+  const [decryptProgress, setDecryptProgress] = useState<DecryptProgress | null>(null);
+  useEffect(() => {
+    const onProgress = (e: Event) => setDecryptProgress((e as CustomEvent<DecryptProgress>).detail);
+    window.addEventListener(DECRYPT_PROGRESS_EVENT, onProgress);
+    return () => window.removeEventListener(DECRYPT_PROGRESS_EVENT, onProgress);
+  }, []);
+  useEffect(() => {
+    if (!isLoading) setDecryptProgress(null);
+  }, [isLoading]);
 
   const onDeviceChosen = useCallback(
     (device: Device) => {
@@ -310,6 +322,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           simplifyTrail={settings.simplifyTrail !== false}
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
+          isLoading={isLoading}
           jevLabels={jevConfig.enabled ? jevLabels : undefined}
           jevTooltips={jevConfig.enabled ? jevTooltips : undefined}
           focusRequest={focusRequest}
@@ -348,8 +361,10 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         <div className="absolute bottom-24 md:top-3 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto touch-none">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-sm font-medium text-foreground">
-              Loading reports...
+            <span className="text-sm font-medium text-foreground tabular-nums">
+              {decryptProgress && decryptProgress.done < decryptProgress.total
+                ? `Decrypting ${decryptProgress.done.toLocaleString()} / ${decryptProgress.total.toLocaleString()}`
+                : "Loading reports..."}
             </span>
           </div>
         </div>

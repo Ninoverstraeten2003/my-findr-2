@@ -162,6 +162,8 @@ interface LeafletMapProps {
   focusRequest?: { key: string; nonce: number } | null;
   /** Collapse stays, route around spikes and curve the trail line (dots are unaffected). */
   simplifyTrail?: boolean;
+  /** Reports are still loading: the initial zoom-to-fit waits until they're all in. */
+  isLoading?: boolean;
 }
 
 export default function LeafletMap({
@@ -180,6 +182,7 @@ export default function LeafletMap({
   jevTooltips,
   focusRequest,
   simplifyTrail = true,
+  isLoading = false,
 }: LeafletMapProps) {
   const markersByKeyRef = useRef<Map<string, L.Layer>>(new Map());
   // Direction arrows live in their own layer: they're placed by screen distance, so they're redrawn on move/zoom.
@@ -235,6 +238,8 @@ export default function LeafletMap({
       zoomControl: false,
       attributionControl: false,
       minZoom: 3,
+      // One canvas instead of an SVG element per dot/line: far faster with thousands of reports.
+      preferCanvas: true,
     });
 
     L.control.zoom({ position: "topleft" }).addTo(map);
@@ -327,6 +332,7 @@ export default function LeafletMap({
   useEffect(() => {
     if (hasInitialFitRef.current) return; // Already fitted for this device
     if (filteredReports.length === 0) return; // No data yet
+    if (isLoading) return; // Wait until every report is in, so the zoom covers all of them
 
     if (isVisible) {
       setTimeout(() => fitMapToState(), 100);
@@ -334,7 +340,7 @@ export default function LeafletMap({
       fitMapToState();
     }
     hasInitialFitRef.current = true;
-  }, [fitMapToState, zoom, isVisible, filteredReports.length]);
+  }, [fitMapToState, zoom, isVisible, filteredReports.length, isLoading]);
 
   // Reset initial fit when device changes using explicit deviceId
   useEffect(() => {
@@ -620,7 +626,8 @@ export default function LeafletMap({
         const year = date.getFullYear();
         const confLabel = confidence === 3 ? "HI" : confidence === 2 ? "MED" : "LO";
 
-        const tooltipContent = `
+        // Built only when the tooltip opens, not upfront for every dot.
+        const tooltipContent = () => `
           <div class="map-tooltip-card watch-face" style="border-color: ${deviceColor}; box-shadow: 0 0 15px ${deviceColor}40, inset 0 0 10px ${deviceColor}20;">
             <!-- Ticks -->
             ${ticksHtml}

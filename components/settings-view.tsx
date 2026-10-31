@@ -54,6 +54,7 @@ import {
 import { useTheme } from "next-themes";
 import { cn, hexToRgba } from "@/lib/utils";
 import JevSettingsCard from "@/components/jev-settings-card";
+import { clearDecryptCache } from "@/lib/decrypt-cache";
 
 
 const DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90, 365, 9999];
@@ -322,6 +323,8 @@ export default function SettingsView() {
 
   const clearSettings = useCallback(() => {
     deleteStoredSettings();
+    // Decrypted locations are cached on this device; a reset removes them too.
+    void clearDecryptCache();
     setSettingsForm(defaultSettings);
     setIsReset(true);
     setTimeout(() => setIsReset(false), 2000);
