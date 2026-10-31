@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_JEV_CONFIG, type JevConfig } from "./jev";
+import { DEFAULT_JEV_CONFIG, upgradeJevConfig, type JevConfig } from "./jev";
 
 const STORAGE_KEY = "findr-jev-config";
 const EVENT = "jev-config-updated";
@@ -9,7 +9,7 @@ const EVENT = "jev-config-updated";
 function loadConfig(): JevConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULT_JEV_CONFIG, ...JSON.parse(raw) };
+    if (raw) return upgradeJevConfig({ ...DEFAULT_JEV_CONFIG, ...JSON.parse(raw) });
   } catch {
     /* fall through to defaults */
   }

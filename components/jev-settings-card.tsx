@@ -99,56 +99,8 @@ export default function JevSettingsCard() {
 
       {config.enabled && (
         <CardContent className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="jevUserKey">Your OpenRouter key</Label>
-            <Input
-              id="jevUserKey"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={config.userApiKey}
-              placeholder="sk-or-v1-…"
-              onChange={(e) => updateConfig((c) => ({ ...c, userApiKey: e.target.value }))}
-            />
-            <span className="text-xs text-muted-foreground">
-              Jev calls are paid from this key. Create one at{" "}
-              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">
-                openrouter.ai/keys
-              </a>{" "}
-              (a credit limit on the key is a good idea). It&apos;s stored on this device only, isn&apos;t included in
-              share links, and passes through this site&apos;s server to OpenRouter without being saved or logged.
-            </span>
-          </div>
-
-          <details className="group rounded-md border border-border px-3 py-2 text-sm" open={!!config.accessToken}>
-            <summary className="cursor-pointer select-none text-xs text-muted-foreground">
-              Running this site? Use the shared key instead
-            </summary>
-            <div className="mt-3 flex flex-col gap-2">
-              <Label htmlFor="jevToken">Owner access token</Label>
-              <Input
-                id="jevToken"
-                type="password"
-                autoComplete="off"
-                value={config.accessToken}
-                placeholder="Same value as JEV_ACCESS_TOKEN on the server"
-                onChange={(e) => updateConfig((c) => ({ ...c, accessToken: e.target.value }))}
-              />
-              <span className="text-xs text-muted-foreground">
-                Uses the server&apos;s own OPENROUTER_API_KEY. Only applies while the field above is empty.
-              </span>
-            </div>
-          </details>
-
-          <p className="-mt-2 text-xs">
-            Paid by:{" "}
-            <span className="font-medium">
-              {config.userApiKey.trim()
-                ? "your own OpenRouter key"
-                : config.accessToken
-                  ? "the site owner's shared key"
-                  : "nobody yet, add your key above"}
-            </span>
+          <p className="text-xs text-muted-foreground">
+            Paid with the OpenRouter key from the &quot;OpenRouter&quot; card above.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
@@ -235,7 +187,7 @@ export default function JevSettingsCard() {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  updateConfig((c) => ({ ...c, questions: DEFAULT_JEV_QUESTIONS, activeQuestionId: "glitch" }))
+                  updateConfig((c) => ({ ...c, questions: DEFAULT_JEV_QUESTIONS, activeQuestionId: "consistency" }))
                 }
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Restore example questions

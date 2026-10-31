@@ -8,6 +8,7 @@
 // Request bodies are never logged.
 
 import { NextResponse } from "next/server";
+import { resolveOpenRouterKey, takeSharedQuota } from "@/lib/server/openrouter-auth";
 import {
   JEV_MAX_INSTRUCTION_CHARS,
   JEV_MAX_ITEMS_PER_CALL,
@@ -28,13 +29,8 @@ const UPSTREAM_CONCURRENCY = 6;
 const MAX_BODY_BYTES = 256 * 1024;
 const DAILY_LIMIT = Number(process.env.JEV_DAILY_LIMIT || 20_000);
 
-// Approximate per-instance daily counter: a backstop, the client budget check is the main cost control.
-let day = "";
-let callsToday = 0;
 
 const KEY_RE = /^[A-Za-z0-9_]{1,40}$/;
-// OpenRouter keys look like sk-or-v1-<hex>; the check only rejects obvious junk before calling upstream.
-const USER_KEY_RE = /^sk-or-[A-Za-z0-9_-]{10,200}$/;
 const ITEM_KEY_RE = /^[A-Za-z0-9_:-]{1,80}$/;
 
 function err(status: number, error: string) {
@@ -118,24 +114,9 @@ async function askOne(apiKey: string, state: string, questions: Record<string, J
 
 export async function POST(request: Request) {
   // A user's own key wins; otherwise fall back to the owner's key behind the access token.
-  const userKey = request.headers.get("x-openrouter-key")?.trim() || "";
-  const usingOwnKey = userKey !== "";
-  let apiKey: string;
-  if (usingOwnKey) {
-    if (!USER_KEY_RE.test(userKey)) return err(400, "That doesn't look like an OpenRouter key (sk-or-...)");
-    apiKey = userKey;
-  } else {
-    const serverKey = process.env.OPENROUTER_API_KEY;
-    if (!serverKey) return err(401, "Add your own OpenRouter key in Settings (this server has no shared key)");
-    const requiredToken = process.env.JEV_ACCESS_TOKEN;
-    if (!requiredToken && process.env.NODE_ENV === "production") {
-      return err(401, "Add your own OpenRouter key in Settings (the shared key is disabled on this server)");
-    }
-    if (requiredToken && request.headers.get("x-jev-token") !== requiredToken) {
-      return err(401, "Add your own OpenRouter key in Settings, or the site owner's access token");
-    }
-    apiKey = serverKey;
-  }
+  const key = resolveOpenRouterKey(request);
+  if ("error" in key) return err(key.status, key.error);
+  const { apiKey, usingOwnKey } = key;
 
   const raw = await request.text();
   if (raw.length > MAX_BODY_BYTES) return err(413, "request too large");
@@ -161,14 +142,8 @@ export async function POST(request: Request) {
   }
 
   // The daily cap protects the owner's key; users with their own key pay for themselves.
-  if (!usingOwnKey) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (today !== day) {
-      day = today;
-      callsToday = 0;
-    }
-    if (callsToday + items.length > DAILY_LIMIT) return err(429, "Daily limit for the shared Jev key reached");
-    callsToday += items.length;
+  if (!usingOwnKey && !takeSharedQuota("jev", items.length, DAILY_LIMIT)) {
+    return err(429, "Daily limit for the shared Jev key reached");
   }
 
   const results: Record<string, { answers?: Record<string, unknown>; error?: string }> = {};

@@ -73,27 +73,38 @@ export const NOUL_NO_AT = 0.35;
 
 export const DEFAULT_JEV_QUESTIONS: JevQuestionConfig[] = [
   {
-    id: "glitch",
-    title: "Glitch?",
-    type: "noul",
+    id: "consistency",
+    title: "Consistency",
+    type: "score",
     instructions:
-      "Is this report most likely a position glitch rather than where the tag really was at that time?",
+      "How consistent is this report's position with the reports around it in time, given their accuracy and Apple confidence?",
     options: [
       {
-        key: "true",
-        label: "Likely glitch",
+        key: "0",
+        label: "Inconsistent",
         description:
-          "The position does not fit its neighbours: an impossible minimum speed, a jump away that comes straight back, far from the reports around it, or poor accuracy with low Apple confidence.",
+          "Can't be reconciled with the reports around it: an impossible minimum speed to neighbours that agree with each other, or far from all of them.",
         mark: "cross",
       },
       {
-        key: "false",
-        label: "Fits neighbours",
+        key: "1",
+        label: "Doubtful",
         description:
-          "The position is consistent with the reports before and after it in time and distance.",
+          "Only partly fits: plausible with one neighbour but not the others, or only within a very large accuracy radius.",
+        mark: "dashed",
+      },
+      {
+        key: "2",
+        label: "Consistent",
+        description: "Fits the reports around it within their accuracy and at plausible speeds.",
         mark: "dot",
       },
-      { key: "unsure", label: "Unsure", description: "", mark: "dashed" },
+      {
+        key: "3",
+        label: "Strongly consistent",
+        description: "Closely matches several neighbours on both sides, with good accuracy.",
+        mark: "double",
+      },
     ],
   },
   {
@@ -144,13 +155,39 @@ export const DEFAULT_JEV_QUESTIONS: JevQuestionConfig[] = [
   },
 ];
 
+/** Wording of the earlier yes/no glitch question, to recognise an unedited copy in saved settings. */
+const OLD_GLITCH_INSTRUCTIONS =
+  "Is this report most likely a position glitch rather than where the tag really was at that time?";
+
+/**
+ * Saved settings keep their own question list, so new defaults don't reach existing users. Replace the old
+ * yes/no glitch question with the consistency score, but only if the user never edited it.
+ */
+export function upgradeJevConfig(config: JevConfig): JevConfig {
+  const replacement = DEFAULT_JEV_QUESTIONS.find((q) => q.id === "consistency")!;
+  let changed = false;
+  const questions = config.questions.map((q) => {
+    if (q.id === "glitch" && q.type === "noul" && q.instructions === OLD_GLITCH_INSTRUCTIONS) {
+      changed = true;
+      return replacement;
+    }
+    return q;
+  });
+  if (!changed) return config;
+  return {
+    ...config,
+    questions,
+    activeQuestionId: config.activeQuestionId === "glitch" ? "consistency" : config.activeQuestionId,
+  };
+}
+
 export const DEFAULT_JEV_CONFIG: JevConfig = {
   enabled: false,
   userApiKey: "",
   accessToken: "",
   maxCostPerRunUsd: 0.05,
   maxReportsPerRun: 2000,
-  activeQuestionId: "glitch",
+  activeQuestionId: "consistency",
   spentUsd: 0,
   questions: DEFAULT_JEV_QUESTIONS,
 };

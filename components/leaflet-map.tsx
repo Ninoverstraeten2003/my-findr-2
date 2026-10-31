@@ -7,6 +7,16 @@ import type { DeviceReport } from "@/lib/types";
 import { markSvg, type JevLabel } from "@/lib/jev";
 import { reportKey } from "@/lib/report-features";
 import { buildTrail } from "@/lib/trail";
+import type { AiPath, TravelMode } from "@/lib/ai-tools";
+
+// AI-drawn paths show the travel mode by line style (device color stays the only color).
+const MODE_DASH: Record<TravelMode, string | undefined> = {
+  car: undefined,
+  bike: "10, 6",
+  foot: "2, 7",
+  train: "14, 6, 2, 6",
+  unknown: "1, 9",
+};
 
 // Confidence-based radius: higher confidence = larger, more prominent dot
 function confidenceToRadius(confidence: number): number {
@@ -164,6 +174,8 @@ interface LeafletMapProps {
   simplifyTrail?: boolean;
   /** Reports are still loading: the initial zoom-to-fit waits until they're all in. */
   isLoading?: boolean;
+  /** Path drawn by the AI chat (through real reports, optionally along roads). */
+  aiPath?: AiPath | null;
 }
 
 export default function LeafletMap({
@@ -183,7 +195,9 @@ export default function LeafletMap({
   focusRequest,
   simplifyTrail = true,
   isLoading = false,
+  aiPath = null,
 }: LeafletMapProps) {
+  const aiLayerRef = useRef<L.LayerGroup | null>(null);
   const markersByKeyRef = useRef<Map<string, L.Layer>>(new Map());
   // Direction arrows live in their own layer: they're placed by screen distance, so they're redrawn on move/zoom.
   const arrowLayerRef = useRef<L.LayerGroup | null>(null);
@@ -265,6 +279,9 @@ export default function LeafletMap({
     trailLayerRef.current = L.layerGroup().addTo(map);
     const layerGroup = L.layerGroup().addTo(map);
     arrowLayerRef.current = L.layerGroup().addTo(map);
+    // AI path above the trail and dots' shapes, below markers and tooltips.
+    map.createPane("aiPath").style.zIndex = "450";
+    aiLayerRef.current = L.layerGroup().addTo(map);
     const redrawTrail = () => drawTrailRef.current();
     const redrawArrows = () => drawArrowsRef.current();
     map.on("zoomend", redrawTrail);
@@ -287,6 +304,7 @@ export default function LeafletMap({
       mapRef.current = null;
       layerGroupRef.current = null;
       arrowLayerRef.current = null;
+      aiLayerRef.current = null;
       trailLayerRef.current = null;
     };
     // Only run on mount/unmount - we handle view changes via setView below
@@ -889,6 +907,36 @@ export default function LeafletMap({
       }
     }
   };
+
+  // Draw the AI chat's path and zoom to it.
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = aiLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    if (!aiPath || aiPath.legs.length === 0) return;
+    const casing = useDarkMarkers ? "rgba(0,0,0,0.75)" : "rgba(255,255,255,0.9)";
+    const all: L.LatLngTuple[] = [];
+    for (const leg of aiPath.legs) {
+      L.polyline(leg.coords, { pane: "aiPath", color: casing, weight: 8, opacity: 1, interactive: false }).addTo(layer);
+      L.polyline(leg.coords, {
+        pane: "aiPath",
+        color: deviceColor,
+        weight: 4,
+        opacity: 0.95,
+        dashArray: MODE_DASH[leg.mode],
+        lineCap: "round",
+      })
+        .bindTooltip(`<div class="jev-tip"><div class="jev-tip-row jev-tip-active">${aiPath.title.replace(/</g, "&lt;")}</div><div class="jev-tip-detail">${leg.label.replace(/</g, "&lt;")}</div></div>`, {
+          sticky: true,
+          opacity: 1,
+          className: "custom-leaflet-tooltip",
+        })
+        .addTo(layer);
+      all.push(...leg.coords);
+    }
+    if (all.length > 1) map.flyToBounds(L.latLngBounds(all), { padding: [60, 60], duration: 0.6, maxZoom: 17 });
+  }, [aiPath, deviceColor, useDarkMarkers]);
 
   // Fly to a report picked in the Jev panel and open its tooltip.
   useEffect(() => {

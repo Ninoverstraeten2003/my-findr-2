@@ -12,6 +12,10 @@ import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
 import TimelineControl from "@/components/timeline-control";
 import JevPanel from "@/components/jev-panel";
+import AiChatPanel from "@/components/ai-chat-panel";
+import { useAiChatConfig } from "@/lib/use-ai-chat-config";
+import { createReportLoader } from "@/lib/report-loader";
+import type { AiPath } from "@/lib/ai-tools";
 import { useJevConfig } from "@/lib/use-jev-config";
 import { useJevLabels } from "@/lib/use-jev-labels";
 import { jevTooltipHtml, labelAnswer } from "@/lib/jev";
@@ -265,6 +269,21 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   }, [jev.answers, jev.questions, jevConfig.activeQuestionId]);
   const [focusRequest, setFocusRequest] = useState<{ key: string; nonce: number } | null>(null);
 
+  // AI chat: tools read reports through this loader (same fetch + decrypt cache as the map) and can draw a path.
+  const [aiConfig, updateAiConfig] = useAiChatConfig();
+  const [aiPath, setAiPath] = useState<AiPath | null>(null);
+  const loadReportsForAi = useMemo(() => createReportLoader(settings), [settings]);
+  const addAiSpend = useCallback(
+    (usd: number) => updateAiConfig((c) => ({ ...c, spentUsd: c.spentUsd + usd })),
+    [updateAiConfig],
+  );
+  // Same OpenRouter key rules as Jev: the user's own key, else the owner token (dev servers need neither).
+  const aiAuthHeaders: Record<string, string> = jevConfig.userApiKey.trim()
+    ? { "x-openrouter-key": jevConfig.userApiKey.trim() }
+    : { "x-jev-token": jevConfig.accessToken };
+  const aiHasKey =
+    !!jevConfig.userApiKey.trim() || !!jevConfig.accessToken || process.env.NODE_ENV !== "production";
+
   const displayLocation = useMemo(() => {
     if (showHistory && filteredReports.length > 0) {
       const last = filteredReports[filteredReports.length - 1];
@@ -323,6 +342,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
           isLoading={isLoading}
+          aiPath={aiPath}
           jevLabels={jevConfig.enabled ? jevLabels : undefined}
           jevTooltips={jevConfig.enabled ? jevTooltips : undefined}
           focusRequest={focusRequest}
@@ -355,6 +375,20 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           onOpenSettings={onOpenSettings}
         />
       )}
+
+      {/* AI chat */}
+      <AiChatPanel
+        devices={settings.devices}
+        currentDevice={currentDevice}
+        config={aiConfig}
+        onSpend={addAiSpend}
+        authHeaders={aiAuthHeaders}
+        hasKey={aiHasKey}
+        loadReports={loadReportsForAi}
+        aiPath={aiPath}
+        onDrawPath={setAiPath}
+        onOpenSettings={onOpenSettings}
+      />
 
       {/* Loading Indicator */}
       {isLoading && (
