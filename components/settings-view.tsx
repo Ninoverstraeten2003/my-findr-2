@@ -53,9 +53,7 @@ import {
 } from "@/components/ui/select";
 import { useTheme } from "next-themes";
 import { cn, hexToRgba } from "@/lib/utils";
-import JevSettingsCard from "@/components/jev-settings-card";
-import OpenRouterSettingsCard from "@/components/openrouter-settings-card";
-import AiChatSettingsCard from "@/components/ai-chat-settings-card";
+import AiSettingsCard from "@/components/ai-settings-card";
 import { clearDecryptCache } from "@/lib/decrypt-cache";
 
 
@@ -966,11 +964,7 @@ export default function SettingsView() {
         </CardContent>
       </Card>
 
-      <OpenRouterSettingsCard />
-
-      <JevSettingsCard />
-
-      <AiChatSettingsCard />
+      <AiSettingsCard />
 
       {/* Devices */}
       <Card>

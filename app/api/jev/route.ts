@@ -13,7 +13,7 @@ import {
   JEV_MAX_INSTRUCTION_CHARS,
   JEV_MAX_ITEMS_PER_CALL,
   JEV_MAX_OPTION_CHARS,
-  JEV_MAX_QUESTIONS,
+  JEV_MAX_WIRE_QUESTIONS,
   JEV_MAX_STATE_CHARS,
   JEV_MODEL,
   type JevWireQuestion,
@@ -40,7 +40,7 @@ function err(status: number, error: string) {
 function sanitizeQuestions(input: unknown): { value?: Record<string, JevWireQuestion>; error?: string } {
   if (typeof input !== "object" || input === null || Array.isArray(input)) return { error: "bad questions" };
   const keys = Object.keys(input);
-  if (keys.length === 0 || keys.length > JEV_MAX_QUESTIONS) return { error: "too many or too few questions" };
+  if (keys.length === 0 || keys.length > JEV_MAX_WIRE_QUESTIONS) return { error: "too many or too few questions" };
   const str = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max;
   const clean: Record<string, JevWireQuestion> = {};
   for (const key of keys) {

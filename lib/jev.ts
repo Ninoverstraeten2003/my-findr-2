@@ -8,6 +8,10 @@ export const JEV_PRICE_PER_M_INPUT_TOKENS = 0.042;
 
 // Server-side limits (mirrored by app/api/jev/route.ts).
 export const JEV_MAX_QUESTIONS = 8;
+/** Questions per Jev call on the wire (a batch asks one question per report). */
+export const JEV_MAX_WIRE_QUESTIONS = 20;
+/** Reports per batch-mode request; the comparison test used 10 with 3 context rows each side. */
+export const JEV_BATCH_SIZE = 10;
 export const JEV_MAX_ITEMS_PER_CALL = 20;
 export const JEV_MAX_STATE_CHARS = 4000;
 export const JEV_MAX_INSTRUCTION_CHARS = 600;
@@ -51,6 +55,11 @@ export interface JevQuestionConfig {
   type: JevQuestionType;
   instructions: string;
   options: JevAnswerOption[];
+  /**
+   * Ask in batches of up to 10 reports shown as one table, instead of one report (with 3 neighbours each side)
+   * per request. In testing, batches were far better and cheaper for consistency/glitches, worse for movement.
+   */
+  batch?: boolean;
 }
 
 export interface JevConfig {
@@ -76,6 +85,7 @@ export const DEFAULT_JEV_QUESTIONS: JevQuestionConfig[] = [
     id: "consistency",
     title: "Consistency",
     type: "score",
+    batch: true,
     instructions:
       "How consistent is this report's position with the reports around it in time, given their accuracy and Apple confidence?",
     options: [
@@ -170,6 +180,11 @@ export function upgradeJevConfig(config: JevConfig): JevConfig {
     if (q.id === "glitch" && q.type === "noul" && q.instructions === OLD_GLITCH_INSTRUCTIONS) {
       changed = true;
       return replacement;
+    }
+    // The unedited consistency question moves to batch mode (tested far better for glitches).
+    if (q.id === "consistency" && q.batch === undefined && q.instructions === replacement.instructions) {
+      changed = true;
+      return { ...q, batch: true };
     }
     return q;
   });
@@ -368,7 +383,10 @@ export const FEATURE_VERSION = 2;
 
 /** Identifies a question's content (model + description format + wording), so editing a question re-asks only it. */
 export function questionHash(q: JevQuestionConfig): string {
-  return hashString(JSON.stringify([JEV_MODEL, FEATURE_VERSION, toWireQuestion(q)]));
+  // Batch mode sees different input, so its answers are cached separately.
+  const parts: unknown[] = [JEV_MODEL, FEATURE_VERSION, toWireQuestion(q)];
+  if (q.batch) parts.push(`batch${JEV_BATCH_SIZE}`);
+  return hashString(JSON.stringify(parts));
 }
 
 // Each report is asked once per question; the answer is kept whatever the history length or new reports.
@@ -404,8 +422,12 @@ function compact(a: JevRawAnswer): JevRawAnswer {
   return { type: "choice", choice: a.choice, confidence: a.confidence, probabilities: round(a.probabilities) };
 }
 
+/** Fired after new answers are stored, so every view of the labels refreshes (the panel and the chat share them). */
+export const JEV_ANSWERS_EVENT = "jev-answers-updated";
+
 export function putCachedAnswers(entries: [string, JevRawAnswer][]) {
   if (!entries.length) return;
+  if (typeof window !== "undefined") queueMicrotask(() => window.dispatchEvent(new Event(JEV_ANSWERS_EVENT)));
   const cache = loadCache();
   for (const [k, a] of entries) cache[k] = compact(a);
   const keys = Object.keys(cache);

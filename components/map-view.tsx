@@ -11,8 +11,10 @@ import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
 import { Button } from "@/components/ui/button";
 import TimelineControl from "@/components/timeline-control";
-import JevPanel from "@/components/jev-panel";
-import AiChatPanel from "@/components/ai-chat-panel";
+import AiPanel, { type AiTab } from "@/components/ai-panel";
+import { useAiChatSession } from "@/lib/use-ai-chat-session";
+import { getLabelsForTool } from "@/lib/jev-tool";
+import { jevAuthHeaders } from "@/lib/jev-runner";
 import { useAiChatConfig } from "@/lib/use-ai-chat-config";
 import { createReportLoader } from "@/lib/report-loader";
 import type { AiPath } from "@/lib/ai-tools";
@@ -281,11 +283,28 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     [updateAiConfig],
   );
   // Same OpenRouter key rules as Jev: the user's own key, else the owner token (dev servers need neither).
-  const aiAuthHeaders: Record<string, string> = jevConfig.userApiKey.trim()
-    ? { "x-openrouter-key": jevConfig.userApiKey.trim() }
-    : { "x-jev-token": jevConfig.accessToken };
   const aiHasKey =
     !!jevConfig.userApiKey.trim() || !!jevConfig.accessToken || process.env.NODE_ENV !== "production";
+
+  // One AI sheet (Ask + Labels). The chat session lives here so closing the sheet keeps the conversation.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiTab, setAiTab] = useState<AiTab>("ask");
+  const chatSession = useAiChatSession({
+    model: aiConfig.model,
+    budgetUsd: aiConfig.maxCostPerChatUsd,
+    authHeaders: jevAuthHeaders(jevConfig),
+    onSpend: addAiSpend,
+    ctx: {
+      devices: settings.devices,
+      loadReports: loadReportsForAi,
+      drawPath: (p) => {
+        setAiPath(p);
+        if (p) setAiOpen(false); // show the map
+      },
+      getLabels: async (device, from, to, runMissing) =>
+        getLabelsForTool(await loadReportsForAi(device, from, to), jevConfig, runMissing, addJevSpend),
+    },
+  });
 
   const displayLocation = useMemo(() => {
     if (showHistory && filteredReports.length > 0) {
@@ -365,29 +384,23 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         isLoading={isLoading}
       />
 
-      {/* Jev labels */}
-      {currentDevice && (
-        <JevPanel
-          reports={filteredReports}
-          deviceName={currentDevice.name}
-          deviceColor={deviceColor}
-          config={jevConfig}
-          jev={jev}
-          onSelectQuestion={(id) => updateJevConfig((c) => ({ ...c, activeQuestionId: id }))}
-          onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
-          onOpenSettings={onOpenSettings}
-        />
-      )}
-
-      {/* AI chat */}
-      <AiChatPanel
-        devices={settings.devices}
-        currentDevice={currentDevice}
-        config={aiConfig}
-        onSpend={addAiSpend}
-        authHeaders={aiAuthHeaders}
+      {/* AI: chat (Ask) and Jev labels (Labels) in one sheet */}
+      <AiPanel
+        open={aiOpen}
+        onOpenChange={setAiOpen}
+        tab={aiTab}
+        onTabChange={setAiTab}
+        jevConfig={jevConfig}
+        jev={jev}
+        reports={filteredReports}
+        deviceName={currentDevice?.name}
+        deviceColor={deviceColor}
+        onSelectQuestion={(id) => updateJevConfig((c) => ({ ...c, activeQuestionId: id }))}
+        onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
+        chatConfig={aiConfig}
+        session={chatSession}
         hasKey={aiHasKey}
-        loadReports={loadReportsForAi}
+        exampleDevice={currentDevice?.name ?? settings.devices[0]?.name ?? "my tag"}
         aiPath={aiPath}
         onDrawPath={setAiPath}
         onOpenSettings={onOpenSettings}

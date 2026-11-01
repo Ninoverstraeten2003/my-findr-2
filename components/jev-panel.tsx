@@ -4,13 +4,6 @@ import { useMemo, useState } from "react";
 import { Sparkles, Loader2, X, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { formatUsd, markSvg, type JevConfig, type JevLabel, type JevMark } from "@/lib/jev";
 import { reportKey } from "@/lib/report-features";
@@ -35,10 +28,13 @@ interface JevPanelProps {
   onSelectQuestion: (id: string | null) => void;
   onFocusReport: (key: string) => void;
   onOpenSettings: () => void;
+  /** Closes the surrounding sheet (e.g. to show the map after jumping to a report). */
+  onClose: () => void;
   jev: ReturnType<typeof useJevLabels>;
 }
 
-export default function JevPanel({
+/** The Labels tab of the AI panel: question picker, per-answer stats, report lists and the run/cost box. */
+export function JevLabelsBody({
   reports,
   deviceName,
   deviceColor,
@@ -46,9 +42,9 @@ export default function JevPanel({
   onSelectQuestion,
   onFocusReport,
   onOpenSettings,
+  onClose,
   jev,
 }: JevPanelProps) {
-  const [open, setOpen] = useState(false);
   const [listKey, setListKey] = useState<string | null>(null);
   const { questions, plan, run } = jev;
   const active = questions.find((q) => q.id === config.activeQuestionId) ?? null;
@@ -82,38 +78,13 @@ export default function JevPanel({
   const answeredForActive = stats.reduce((s, r) => s + r.count, 0);
   const listRow = stats.find((r) => r.option.key === listKey) ?? null;
 
-  if (!config.enabled) return null;
-
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="absolute bottom-6 right-4 z-[1000] flex items-center gap-1.5 rounded-full border border-border bg-card/30 px-3 py-2 text-xs font-medium text-card-foreground shadow-md backdrop-blur-md touch-none active:scale-95 transition-transform"
-        aria-label="Open Jev labels"
-      >
-        {run.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        <span>{active ? active.title : "Jev"}</span>
-        {run.running && (
-          <span className="tabular-nums text-muted-foreground">
-            {run.done}/{run.total}
-          </span>
-        )}
-      </button>
-
-      <Drawer open={open} onOpenChange={setOpen} shouldScaleBackground={false}>
-        <DrawerContent className="max-h-[85dvh] md:max-w-lg md:mx-auto">
-          <DrawerHeader className="text-left pb-2">
-            <DrawerTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4" /> Jev labels
-            </DrawerTitle>
-            <DrawerDescription className="text-xs">
-              {deviceName ? `${deviceName} · ` : ""}
-              {reports.length.toLocaleString()} reports in view · {labelled.toLocaleString()} labelled. Every report stays on
-              the map; labels only change a dot&apos;s shape.
-            </DrawerDescription>
-          </DrawerHeader>
-
-          <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-6">
+    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-6">
+      <p className="text-xs text-muted-foreground">
+        {deviceName ? `${deviceName} · ` : ""}
+        {reports.length.toLocaleString()} reports in view · {labelled.toLocaleString()} labelled. Every report stays on the
+        map; labels only change a dot&apos;s shape.
+      </p>
             {/* Question picker */}
             <div className="sticky top-0 z-10 -mx-4 flex shrink-0 gap-2 overflow-x-auto bg-background px-4 pb-2 pt-1">
               <Chip selected={!active} onClick={() => onSelectQuestion(null)}>
@@ -191,7 +162,7 @@ export default function JevPanel({
                       <button
                         key={key}
                         onClick={() => {
-                          setOpen(false);
+                          onClose();
                           onFocusReport(key);
                         }}
                         className="flex items-center gap-2 px-2.5 py-2 text-left text-xs hover:bg-secondary/60"
@@ -220,7 +191,7 @@ export default function JevPanel({
                 <>
                   <div className="flex items-center justify-between text-xs">
                     <span>
-                      Asking Jev… {run.done.toLocaleString()} / {run.total.toLocaleString()}
+                      Asking Jev… {run.done.toLocaleString()} / {run.total.toLocaleString()} answers
                     </span>
                     <span className="tabular-nums text-muted-foreground">{formatUsd(run.spentUsd)} so far</span>
                   </div>
@@ -269,7 +240,7 @@ export default function JevPanel({
                 <p className={cn("text-xs", run.error ? "text-destructive" : "text-muted-foreground")}>
                   {run.error
                     ? `Stopped: ${run.error}.`
-                    : `Last run: ${run.done.toLocaleString()} reports, ${run.tokens.toLocaleString()} tokens, ${formatUsd(run.spentUsd)} (OpenRouter's figure).`}
+                    : `Last run: ${run.done.toLocaleString()} answers, ${run.tokens.toLocaleString()} tokens, ${formatUsd(run.spentUsd)} (OpenRouter's figure).`}
                   {run.failed > 0 && ` ${run.failed} failed and can be retried.`}
                   {run.message && ` ${run.message}.`}
                 </p>
@@ -291,16 +262,13 @@ export default function JevPanel({
               size="sm"
               className="self-start text-muted-foreground"
               onClick={() => {
-                setOpen(false);
+                onClose();
                 onOpenSettings();
               }}
             >
               <SettingsIcon className="h-3.5 w-3.5" /> Edit questions and limits
             </Button>
-          </div>
-        </DrawerContent>
-      </Drawer>
-    </>
+    </div>
   );
 }
 

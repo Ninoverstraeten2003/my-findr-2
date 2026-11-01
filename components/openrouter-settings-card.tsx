@@ -1,17 +1,18 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SettingsShell } from "@/components/settings-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useJevConfig } from "@/lib/use-jev-config";
 
 /** The OpenRouter key (or owner token) shared by Jev labels and the AI chat. Stored with the Jev settings. */
-export default function OpenRouterSettingsCard() {
+export default function OpenRouterSettingsCard({ embedded = false }: { embedded?: boolean } = {}) {
   const [config, updateConfig] = useJevConfig();
   return (
-    <Card>
+    <SettingsShell embedded={embedded}>
       <CardHeader className="pb-4">
-        <CardTitle className="text-base">OpenRouter</CardTitle>
+        <CardTitle className="text-sm">OpenRouter key</CardTitle>
         <p className="text-xs text-muted-foreground">
           AI features (Jev labels, AI chat) run through OpenRouter with zero data retention.
         </p>
@@ -69,6 +70,6 @@ export default function OpenRouterSettingsCard() {
             </span>
           </p>
       </CardContent>
-    </Card>
+    </SettingsShell>
   );
 }

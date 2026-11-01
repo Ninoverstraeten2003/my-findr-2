@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SettingsShell } from "@/components/settings-shell";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,7 @@ function templateOptions(type: JevQuestionType): JevAnswerOption[] {
   ];
 }
 
-export default function JevSettingsCard() {
+export default function JevSettingsCard({ embedded = false }: { embedded?: boolean } = {}) {
   const [config, updateConfig] = useJevConfig();
   const [cacheSize, setCacheSize] = useState(0);
 
@@ -81,10 +82,10 @@ export default function JevSettingsCard() {
     }));
 
   return (
-    <Card>
+    <SettingsShell embedded={embedded}>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between gap-4">
-          <CardTitle className="text-base">Jev labels</CardTitle>
+          <CardTitle className="text-sm">Labels (Jev)</CardTitle>
           <Switch
             id="jevEnabled"
             checked={config.enabled}
@@ -100,7 +101,7 @@ export default function JevSettingsCard() {
       {config.enabled && (
         <CardContent className="flex flex-col gap-5">
           <p className="text-xs text-muted-foreground">
-            Paid with the OpenRouter key from the &quot;OpenRouter&quot; card above.
+            Paid with the OpenRouter key above.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
@@ -201,7 +202,7 @@ export default function JevSettingsCard() {
           </div>
         </CardContent>
       )}
-    </Card>
+    </SettingsShell>
   );
 }
 
@@ -263,6 +264,23 @@ function QuestionEditor({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="flex items-start justify-between gap-3 rounded-md border border-border p-2">
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor={`batch-${q.id}`} className="text-xs">
+              Ask in batches of 10
+            </Label>
+            <span className="text-xs text-muted-foreground">
+              Jev sees the reports as one table instead of one report with 3 neighbours each side. Tested much better and
+              cheaper for consistency/glitches, worse for movement.
+            </span>
+          </div>
+          <Switch
+            id={`batch-${q.id}`}
+            checked={!!q.batch}
+            onCheckedChange={(checked) => onChange((c) => ({ ...c, batch: checked }))}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">

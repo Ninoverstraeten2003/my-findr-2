@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SettingsShell } from "@/components/settings-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -11,15 +12,15 @@ import { useAiChatConfig } from "@/lib/use-ai-chat-config";
 
 const OTHER = "__other__";
 
-export default function AiChatSettingsCard() {
+export default function AiChatSettingsCard({ embedded = false }: { embedded?: boolean } = {}) {
   const [config, updateConfig] = useAiChatConfig();
   const known = CHAT_MODELS.some((m) => m.id === config.model);
 
   return (
-    <Card>
+    <SettingsShell embedded={embedded}>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between gap-4">
-          <CardTitle className="text-base">AI chat</CardTitle>
+          <CardTitle className="text-sm">Ask (chat)</CardTitle>
           <Switch
             id="aiChatEnabled"
             checked={config.enabled}
@@ -91,6 +92,6 @@ export default function AiChatSettingsCard() {
           </div>
         </CardContent>
       )}
-    </Card>
+    </SettingsShell>
   );
 }

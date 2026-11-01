@@ -125,3 +125,54 @@ export function buildReportStates(reports: DeviceReport[]): string[] {
     return `${CONTEXT}\n${JSON.stringify(features)}`;
   });
 }
+
+// ── Batched description: one table for up to 10 reports (used by batch-mode questions) ───────────
+
+const TABLE_HEAD =
+  "Apple Find My location reports of one Bluetooth tracker tag, in time order. Each position comes from a nearby iPhone, " +
+  "with its accuracy radius (m) and Apple confidence (1-3, 3 best).\n" +
+  "Columns: report | minutes from the first report | east m | north m | accuracy m | confidence | min speed from previous row km/h " +
+  "(distance minus both accuracy radii, divided by time; real speed may be higher).\nRows marked ctx are context only.\n";
+
+/**
+ * A table of the target reports (#1..#n) plus `ctx` rows of context on each side, with positions as metre
+ * offsets from the first target (never coordinates). Same format the labeller comparison was run with.
+ * `reports` must be sorted by seen time; `targets` are indices into it, ascending.
+ */
+export function buildBatchTable(reports: DeviceReport[], targets: number[], ctx = 3): string {
+  const pts = reports.map((r) => ({
+    t: new Date(r.decrypedPayload.date).getTime(),
+    lat: r.decrypedPayload.location.latitude,
+    lon: r.decrypedPayload.location.longitude,
+    acc: r.decrypedPayload.location.accuracy,
+    conf: r.decrypedPayload.confidence,
+  }));
+  const lo = Math.max(0, targets[0] - ctx);
+  const hi = Math.min(pts.length - 1, targets[targets.length - 1] + ctx);
+  const ref = pts[targets[0]];
+  const kx = 111_320 * Math.cos((ref.lat * Math.PI) / 180);
+  const label = new Map(targets.map((i, n) => [i, `#${n + 1}`]));
+  const rows: string[] = [];
+  for (let j = lo; j <= hi; j++) {
+    const p = pts[j];
+    let speed = "";
+    if (j > 0) {
+      const q = pts[j - 1];
+      const dt = (p.t - q.t) / 1000;
+      const lower = Math.max(0, haversineM(p.lat, p.lon, q.lat, q.lon) - p.acc - q.acc);
+      speed = dt > 0 ? String(round((lower / dt) * 3.6, 1)) : "same second";
+    }
+    rows.push(
+      [
+        label.get(j) ?? "ctx",
+        `${(p.t - ref.t) / 60000 >= 0 ? "+" : ""}${round((p.t - ref.t) / 60000, 1)}`,
+        round((p.lon - ref.lon) * kx),
+        round((p.lat - ref.lat) * 110_540),
+        p.acc,
+        p.conf,
+        speed,
+      ].join(" | "),
+    );
+  }
+  return TABLE_HEAD + rows.join("\n");
+}

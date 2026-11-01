@@ -29,6 +29,7 @@ function systemPrompt(): string {
     `Now is ${formatLocal(new Date())} local time (${tz}). Use local times as "YYYY-MM-DD HH:MM" in tool calls and answers.`,
     "How the data works: each report is the position of a nearby iPhone that heard the tag, with an accuracy radius in metres and Apple confidence 1-3 (3 best). Reports can be sparse (hours apart, e.g. at night) and some are wrong; a single report far away that the next one contradicts is usually a glitch.",
     "Use the tools instead of guessing. Start with get_stays_and_trips for a day or period; use get_reports for detail, place_name for names of places, route to judge travel mode from distance and time.",
+    "get_labels gives Jev classifier labels per report (Consistency 0-3, 0 = likely glitch; Movement). Treat them as hints with their probabilities, not facts; only use run_missing when the user wants labels or the question needs them.",
     "To show movement on the map, call draw_path with legs by time and mode; it draws through the real reports. Never invent coordinates.",
     "Say how sure you are and why. Don't claim who carried the tag. Keep answers short; use bullet points for timelines.",
   ].join("\n");
@@ -71,11 +72,15 @@ export async function sendChat(opts: SendOptions): Promise<{ history: ChatMessag
     cost += step;
     opts.onEvent({ type: "cost", usd: step });
 
-    const msg = data.choices?.[0]?.message;
+    const choice = data.choices?.[0];
+    const msg = choice?.message;
     if (!msg) throw new Error("Empty answer from the model");
+    const cutOff = choice.finish_reason === "length";
     const toolCalls: ToolCall[] = msg.tool_calls ?? [];
     history.push({ role: "assistant", content: msg.content ?? null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
-    if (toolCalls.length === 0) return { history, costUsd: cost };
+    if (toolCalls.length === 0) {
+      return { history, costUsd: cost, ...(cutOff ? { stopped: "The answer was cut off at the length limit; ask for a shorter answer or a narrower range" } : {}) };
+    }
 
     if (round === MAX_TOOL_ROUNDS) {
       return { history, costUsd: cost, stopped: "Stopped: too many tool steps for one question" };

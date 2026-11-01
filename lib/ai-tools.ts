@@ -23,6 +23,8 @@ export interface ToolContext {
   /** Reports of a device seen between from and to, decrypted and sorted by seen time. */
   loadReports: (device: Device, from: Date, to: Date) => Promise<DeviceReport[]>;
   drawPath: (path: AiPath | null) => void;
+  /** Jev labels for reports in a range; with runMissing, asks Jev for unlabelled ones (within the Jev limits). */
+  getLabels: (device: Device, from: Date, to: Date, runMissing: boolean) => Promise<unknown>;
 }
 
 // ── Schemas (OpenAI-style function tools, as OpenRouter expects) ──────────────────────────────
@@ -68,6 +70,25 @@ export const TOOL_SCHEMAS = [
           from: timeParam("Start"),
           to: timeParam("End"),
           max_rows: { type: "integer", description: "Default 150, at most 400" },
+        },
+        required: ["device", "from", "to"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_labels",
+      description:
+        "Jev classifier labels per report (e.g. Consistency score 0-3 where 0 = likely glitch, Movement), with counts per answer. Set run_missing to have Jev label reports that aren't labelled yet; this costs a little and is skipped if over the user's limits. Labels are hints: check them against the reports.",
+      parameters: {
+        type: "object",
+        properties: {
+          device: { type: "string" },
+          from: timeParam("Start"),
+          to: timeParam("End"),
+          run_missing: { type: "boolean" },
         },
         required: ["device", "from", "to"],
         additionalProperties: false,
@@ -401,6 +422,20 @@ export async function runTool(
         },
         summary: `Summarised ${device.name}: ${stays.length} stays, ${trips.length} trips`,
       };
+    }
+
+    case "get_labels": {
+      const device = findDevice(ctx, args.device);
+      const result = await ctx.getLabels(device, parseTime(args.from), parseTime(args.to, true), !!args.run_missing);
+      const r = result as { labelled?: number; run?: { reports_asked?: number; skipped?: string }; error?: string };
+      const summary = r.error
+        ? `Labels unavailable: ${r.error}`
+        : r.run?.skipped
+          ? `Read Jev labels (labelling skipped: ${r.run.skipped})`
+          : r.run?.reports_asked
+            ? `Ran Jev on ${r.run.reports_asked} reports and read the labels`
+            : `Read Jev labels of ${device.name} (${r.labelled ?? 0} labelled)`;
+      return { result, summary };
     }
 
     case "place_name": {

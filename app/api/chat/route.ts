@@ -18,7 +18,8 @@ const UPSTREAM_TIMEOUT_MS = 50_000;
 const MAX_BODY_BYTES = 600 * 1024;
 const MAX_MESSAGES = 120;
 const MAX_TOOLS = 16;
-const MAX_OUTPUT_TOKENS = 1500;
+// Includes the model's internal reasoning (billed as output), so leave room beyond the visible answer.
+const MAX_OUTPUT_TOKENS = 4000;
 const SHARED_DAILY_LIMIT = Number(process.env.CHAT_DAILY_LIMIT || 2000);
 const MODEL_RE = /^[A-Za-z0-9._\-/:~]{3,100}$/;
 
