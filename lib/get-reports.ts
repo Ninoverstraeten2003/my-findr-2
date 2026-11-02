@@ -33,7 +33,8 @@ export async function getPollerReportsForDevice(
   device: Device,
   pollerApiKey: string,
   after?: string,
-  seenAfter?: string
+  seenAfter?: string,
+  seenBefore?: string
 ): Promise<DeviceReport[]> {
   device.advertismentKey = await getAdvertisementKey(device.privateKey);
 
@@ -41,7 +42,8 @@ export async function getPollerReportsForDevice(
     device.advertismentKey,
     pollerApiKey,
     after,
-    seenAfter
+    seenAfter,
+    seenBefore
   );
 
   return decryptReports(reports, device.privateKey);
@@ -145,15 +147,17 @@ async function fetchPollerReports(
   advertisementKey: string,
   apiKey: string,
   after?: string,
-  seenAfter?: string
+  seenAfter?: string,
+  seenBefore?: string
 ): Promise<DeviceReport[]> {
   // URL Encode the key just in case, though it usually is safebase64 or similar
   const encodedKey = encodeURIComponent(advertisementKey);
   let url = `https://findr.ninoverstraeten.com/api/reports/${encodedKey}`;
-  // after = received by the server after this time (only new reports); seen_after = history window
+  // after = received by the server after this time (only new reports); seen_after / seen_before = history window
   const params = new URLSearchParams();
   if (after) params.set("after", after);
   if (seenAfter) params.set("seen_after", seenAfter);
+  if (seenBefore) params.set("seen_before", seenBefore);
   const query = params.toString();
   if (query) url += `?${query}`;
 
