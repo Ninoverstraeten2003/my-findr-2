@@ -443,7 +443,7 @@ export default function SettingsView() {
       {/* Connection Settings */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <CardTitle className="text-base">Connection</CardTitle>
             <div className="flex items-center gap-2">
               <Label htmlFor="usePoller" className="text-sm font-normal text-muted-foreground">
@@ -648,7 +648,7 @@ export default function SettingsView() {
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <Label>History Length</Label>
               <Badge variant="secondary">
                 {settingsForm.days === 9999 
@@ -783,7 +783,7 @@ export default function SettingsView() {
 
           <Separator />
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="showHistory">Show History</Label>
                 <span className="text-xs text-muted-foreground">
@@ -802,7 +802,7 @@ export default function SettingsView() {
             </div>
 
             {(settingsForm.showHistory ?? true) && (
-              <div className="flex items-center justify-between pl-4 border-l-2 border-muted">
+              <div className="flex items-center justify-between gap-4 pl-4 border-l-2 border-muted">
                 <div className="flex flex-col gap-0.5">
                   <Label htmlFor="showDirectionArrows">Show Trail Direction</Label>
                   <span className="text-xs text-muted-foreground">
@@ -822,7 +822,27 @@ export default function SettingsView() {
             )}
 
             {(settingsForm.showHistory ?? true) && (
-              <div className="flex items-center justify-between pl-4 border-l-2 border-muted">
+              <div className="flex items-center justify-between gap-4 pl-4 border-l-2 border-muted">
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="animateTrail">Animate Trail Direction</Label>
+                  <span className="text-xs text-muted-foreground">
+                    The trail&apos;s dashes flow in the direction of travel (off when your device asks for reduced motion)
+                  </span>
+                </div>
+                <Switch
+                  id="animateTrail"
+                  checked={settingsForm.animateTrail ?? true}
+                  onCheckedChange={(checked) => {
+                    const updated = { ...settingsForm, animateTrail: checked };
+                    setSettingsForm(updated);
+                    updateStoredSettings(updated);
+                  }}
+                />
+              </div>
+            )}
+
+            {(settingsForm.showHistory ?? true) && (
+              <div className="flex items-center justify-between gap-4 pl-4 border-l-2 border-muted">
                 <div className="flex flex-col gap-0.5">
                   <Label htmlFor="simplifyTrail">Simplify Trail</Label>
                   <span className="text-xs text-muted-foreground">
@@ -843,7 +863,7 @@ export default function SettingsView() {
               </div>
             )}
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="pollInterval">Refresh Interval</Label>
                 <span className="text-xs text-muted-foreground">
@@ -876,7 +896,7 @@ export default function SettingsView() {
               </Select>
             </div>
             
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="filterLowQuality">Filter Reports by Quality</Label>
                 <span className="text-xs text-muted-foreground">
@@ -898,7 +918,7 @@ export default function SettingsView() {
               <div className="mt-2 flex flex-col gap-4 pl-4 border-l border-border/80">
                 {/* Confidence filter */}
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <Label className="text-xs text-foreground font-medium">Minimum Confidence</Label>
                     <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-mono">
                       {CONFIDENCE_LABELS[settingsForm.filterMinConfidence ?? 1]}
@@ -924,7 +944,7 @@ export default function SettingsView() {
 
                 {/* Accuracy filter */}
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <Label className="text-xs text-foreground font-medium">Maximum GPS Accuracy Radius</Label>
                     <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-mono">
                       {settingsForm.filterMaxAccuracy === 9999
@@ -970,7 +990,7 @@ export default function SettingsView() {
       {/* Devices */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <CardTitle className="text-base">
               Devices
               {settingsForm.devices.length > 0 && (
@@ -1176,7 +1196,7 @@ export default function SettingsView() {
         <Button 
           variant="outline" 
           onClick={generateShareLink} 
-          className="flex-1 bg-background text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
+          className="flex-1 bg-card text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
           disabled={isGeneratingLink}
         >
           {isGeneratingLink ? (
@@ -1191,7 +1211,7 @@ export default function SettingsView() {
         <Button
           variant="outline"
           onClick={() => setConfirmReset(true)}
-          className="flex-1 bg-background shadow-sm text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+          className="flex-1 bg-card shadow-sm text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
         >
           {isReset ? (
             <>

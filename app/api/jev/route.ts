@@ -1,7 +1,7 @@
 // Server-side proxy to OpenRouter's Jev Decisions API (same approach as the Plate proxy):
 //  - OPENROUTER_API_KEY never reaches the browser.
 //  - Every call is forced to zero data retention.
-//  - Only typesafe/jev-1.13 and well-formed choice / noul / score questions go through.
+//  - Only typesafe/jev-1.14 and well-formed choice / noul / score questions go through.
 //  - Who pays: a user's own OpenRouter key (x-openrouter-key header) is used as-is for that request and never
 //    stored or logged. Without one, the owner's OPENROUTER_API_KEY is used, but only when x-jev-token matches
 //    JEV_ACCESS_TOKEN (required in production), with a daily cap.

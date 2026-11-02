@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Opaque surface for controls floating over the map (zoom, recenter, AI, devices, location). */
+  .map-surface {
+    @apply bg-card text-card-foreground border border-border shadow-md;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -175,15 +182,6 @@
   color: hsl(210 40% 98%) !important;
 }
 
-.dark .leaflet-control-zoom a {
-  background: hsl(222 47% 10%) !important;
-  color: hsl(210 40% 98%) !important;
-  border-color: hsl(222 47% 14%) !important;
-}
-
-.dark .leaflet-control-zoom a:hover {
-  background: hsl(222 47% 14%) !important;
-}
 
 .dark .leaflet-control-attribution {
   background: hsl(222 47% 7% / 0.8) !important;

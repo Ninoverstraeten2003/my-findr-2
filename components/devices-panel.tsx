@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   MapPin,
   Circle,
@@ -72,14 +72,24 @@ export default function DevicesPanel({
   isLoading,
 }: DevicesPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // The chosen device moves to the top of the list; scroll up so it stays in view.
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentDevice?.id]);
 
   if (!devices || devices.length === 0) return null;
+
+  const ordered = currentDevice
+    ? [...devices.filter((d) => d.id === currentDevice.id), ...devices.filter((d) => d.id !== currentDevice.id)]
+    : devices;
 
   const status = pluralize(devices.length, "Device");
 
   return (
     <div className="absolute top-3 right-3 z-[1001] w-72 touch-none">
-      <div className="rounded-xl border border-border bg-card/30 backdrop-blur-md shadow-lg overflow-hidden">
+      <div className="map-surface rounded-xl overflow-hidden">
         {/* Header */}
         <button
           type="button"
@@ -102,8 +112,8 @@ export default function DevicesPanel({
 
         {/* Device List */}
         {isOpen && (
-          <div className="border-t border-border max-h-60 overflow-y-auto touch-pan-y">
-            {devices.map((device) => {
+          <div ref={listRef} className="border-t border-border max-h-60 overflow-y-auto touch-pan-y">
+            {ordered.map((device) => {
               const IconComp = iconMap[device.icon] || MapPin;
               const isActive = currentDevice?.id === device.id;
               
@@ -127,7 +137,7 @@ export default function DevicesPanel({
                   className={cn(
                     "flex items-center w-full justify-start gap-3 rounded-none px-4 py-3 h-auto text-left transition-all duration-300 touch-pan-y",
                     isActive
-                      ? "bg-card shadow-sm border-l-2 border-l-primary"
+                      ? "bg-secondary/60 border-l-2 border-l-primary"
                       : "hover:pl-5 border-l-2 border-l-transparent"
                   )}
                 >

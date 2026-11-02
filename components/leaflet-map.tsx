@@ -7,6 +7,15 @@ import type { DeviceReport } from "@/lib/types";
 import { markSvg, type JevLabel } from "@/lib/jev";
 import { reportKey } from "@/lib/report-features";
 import { buildTrail } from "@/lib/trail";
+import {
+  AI_PATH_CASING,
+  ARROW_HALO_FILTER,
+  DOT_OUTLINE,
+  DOT_OUTLINE_WEIGHT,
+  TRAIL_CASING,
+  spikeStubStyle,
+  trailLineStyle,
+} from "@/lib/trail-style";
 import type { AiPath, TravelMode } from "@/lib/ai-tools";
 
 // AI-drawn paths show the travel mode by line style (device color stays the only color).
@@ -145,6 +154,9 @@ const TILE_LAYERS = {
   streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 };
 const CANVAS_MAX_NATIVE_ZOOM = 16;
+/** Above Esri Canvas' last detailed zoom, light/dark switch to OpenStreetMap tiles (sharp to z19), filtered to match. */
+const OSM_DETAIL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const MAX_ZOOM = 19;
 
 const ATTRIBUTIONS = {
   esriCanvas: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
@@ -172,6 +184,8 @@ interface LeafletMapProps {
   focusRequest?: { key: string; nonce: number } | null;
   /** Collapse stays, route around spikes and curve the trail line (dots are unaffected). */
   simplifyTrail?: boolean;
+  /** Dashes flow along the trail in the direction of travel. */
+  animateTrail?: boolean;
   /** Reports are still loading: the initial zoom-to-fit waits until they're all in. */
   isLoading?: boolean;
   /** Path drawn by the AI chat (through real reports, optionally along roads). */
@@ -194,6 +208,7 @@ export default function LeafletMap({
   jevTooltips,
   focusRequest,
   simplifyTrail = true,
+  animateTrail = true,
   isLoading = false,
   aiPath = null,
 }: LeafletMapProps) {
@@ -212,12 +227,15 @@ export default function LeafletMap({
     style: L.PolylineOptions;
     /** Wider light line drawn under the trail on busy maps, for contrast. */
     casing?: L.PolylineOptions;
+    animate?: boolean;
   }>({
     paths: [],
     offset: false,
     style: {},
   });
   const drawTrailRef = useRef<() => void>(() => {});
+  // Trail lines are few, so they're SVG (dots stay on the canvas): SVG paths can be animated with CSS.
+  const trailRendererRef = useRef<L.Renderer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -282,6 +300,7 @@ export default function LeafletMap({
 
     // Trail pane sits under the report dots (overlayPane is 400).
     map.createPane("trail").style.zIndex = "390";
+    trailRendererRef.current = L.svg({ pane: "trail" });
     trailLayerRef.current = L.layerGroup().addTo(map);
     const layerGroup = L.layerGroup().addTo(map);
     arrowLayerRef.current = L.layerGroup().addTo(map);
@@ -410,16 +429,27 @@ export default function LeafletMap({
         break;
     }
 
-    const nativeZoom = labelsUrl ? { maxNativeZoom: CANVAS_MAX_NATIVE_ZOOM, maxZoom: 19 } : {};
+    // Esri Canvas (light/dark) has no detail past z16; enlarging its z16 tiles looked blocky. So it stops at z16 and
+    // OpenStreetMap tiles, filtered gray (light) or inverted gray (dark), take over for z17-19.
+    const zoomRange = labelsUrl ? { maxZoom: CANVAS_MAX_NATIVE_ZOOM } : { maxZoom: MAX_ZOOM };
     const base = L.tileLayer(url, {
       attribution: attr,
       className: activeTheme === "dark" ? "map-tiles-dark" : activeTheme === "streets" ? "map-tiles-streets" : "",
       zIndex: 1,
-      ...nativeZoom,
+      ...zoomRange,
     });
     const layer = L.layerGroup([base]);
     if (labelsUrl) {
-      layer.addLayer(L.tileLayer(labelsUrl, { zIndex: 2, ...nativeZoom }));
+      layer.addLayer(L.tileLayer(labelsUrl, { zIndex: 2, ...zoomRange }));
+      layer.addLayer(
+        L.tileLayer(OSM_DETAIL, {
+          attribution: ATTRIBUTIONS.osm,
+          className: activeTheme === "dark" ? "map-tiles-osm-dark" : "map-tiles-osm-light",
+          minZoom: CANVAS_MAX_NATIVE_ZOOM + 1,
+          maxZoom: MAX_ZOOM,
+          zIndex: 1,
+        }),
+      );
     }
     layer.addTo(mapRef.current);
     tileLayerRef.current = layer;
@@ -508,17 +538,7 @@ export default function LeafletMap({
 
     // Trail line. Order is always true seen-time order; "simplify" only changes how the line is routed
     // (stays collapsed, spikes routed around, curves). Every dot is still drawn below.
-    const lineColor = useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor;
-    // The Streets map is colourful and busy: give the overlay white outlines so it stays readable.
-    const busyMap = activeTheme === "streets";
-    const lineStyle: L.PolylineOptions = {
-      dashArray: "6, 12",
-      weight: 2,
-      opacity: 0.5,
-      color: lineColor,
-      interactive: false,
-      pane: "trail",
-    };
+    // Same style on every map theme (lib/trail-style.ts).
     const trailPaths: L.LatLngTuple[][] = [];
 
     if (showHistory && filteredReports.length > 1 && simplifyTrail) {
@@ -563,7 +583,7 @@ export default function LeafletMap({
       trailPaths.push(...trail.paths);
       // Spikes keep a faint stub so they're still connected, without dragging the line out and back.
       for (const stub of trail.spikeStubs) {
-        L.polyline(stub, { dashArray: "1, 6", weight: 1, opacity: 0.35, color: lineColor, interactive: false, pane: "trail" }).addTo(layerGroup);
+        L.polyline(stub, spikeStubStyle(deviceColor)).addTo(layerGroup);
       }
     } else if (showHistory && filteredReports.length > 1) {
       // Raw trail: every report in order; absorbed dots snap to the cluster location.
@@ -591,8 +611,9 @@ export default function LeafletMap({
     trailBaseRef.current = {
       paths: trailPaths,
       offset: simplifyTrail,
-      style: busyMap ? { ...lineStyle, weight: 2.5, opacity: 0.9 } : lineStyle,
-      casing: busyMap ? { color: "#ffffff", weight: 6, opacity: 0.8, interactive: false, pane: "trail" } : undefined,
+      style: trailLineStyle(deviceColor),
+      casing: TRAIL_CASING,
+      animate: animateTrail,
     };
     drawTrailRef.current();
 
@@ -623,11 +644,10 @@ export default function LeafletMap({
         let marker: L.CircleMarker | L.Marker;
         if (jevLabel && jevLabel.mark !== "dot") {
           const size = Math.max(14, Math.round(radius * 2 + 6));
-          const outline = useDarkMarkers ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.55)";
           marker = L.marker([location.latitude, location.longitude], {
             icon: L.divIcon({
               className: "jev-mark",
-              html: markSvg(jevLabel.mark, fillColor, outline, size),
+              html: markSvg(jevLabel.mark, fillColor, DOT_OUTLINE, size),
               iconSize: [size, size],
               iconAnchor: [size / 2, size / 2],
             }),
@@ -638,12 +658,8 @@ export default function LeafletMap({
           marker = L.circleMarker(
             [location.latitude, location.longitude],
             {
-              color: busyMap
-                ? "rgba(255,255,255,0.95)"
-                : useDarkMarkers
-                  ? `rgba(255,255,255,${confidence >= 2 ? 0.4 : 0.2})`
-                  : `rgba(0,0,0,${confidence >= 2 ? 0.15 : 0.08})`,
-              weight: busyMap ? 1.5 : confidence >= 2 ? 1 : 0.5,
+              color: DOT_OUTLINE,
+              weight: DOT_OUTLINE_WEIGHT,
               fillColor,
               fillOpacity,
               radius,
@@ -709,6 +725,7 @@ export default function LeafletMap({
               fillColor: deviceColor,
               fillOpacity: fillOpacity,
               dashArray: location.accuracy > 65 ? "6, 8" : undefined,
+              interactive: false,
             });
             layerGroup.addLayer(hoverCircle);
             hoverCircle.bringToBack();
@@ -748,9 +765,26 @@ export default function LeafletMap({
           fillColor: deviceColor,
           fillOpacity: 0.08,
           dashArray: displayAccuracy > 65 ? "6, 8" : undefined,
+          interactive: false, // only a visual range; hovers pass through to the stay underneath
         }).addTo(layerGroup);
       }
 
+      // A Jev label on the latest report shows as its mark shape here too, like on the report dots.
+      const latestMark = showHistory && latestReport ? jevLabels?.get(reportKey(latestReport))?.mark : undefined;
+      const centre =
+        latestMark && latestMark !== "dot"
+          ? `<div style="position: relative; z-index: 2; width: 100%; height: 100%; filter: drop-shadow(0 0 6px ${deviceColor});">${markSvg(latestMark, deviceColor, "#ffffff", 22)}</div>`
+          : `<div style="
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background-color: ${deviceColor};
+            border: 2px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 12px ${deviceColor};
+            z-index: 2;
+          "></div>`;
+      const markSize = latestMark && latestMark !== "dot" ? 22 : 20;
       const icon = L.divIcon({
         className: "custom-location-marker",
         html: `<div style="position: relative; width: 100%; height: 100%;">
@@ -765,19 +799,10 @@ export default function LeafletMap({
             opacity: 0.6;
             animation: map-pulse 2s infinite;
           "></div>
-          <div style="
-            position: relative;
-            width: 100%;
-            height: 100%;
-            background-color: ${deviceColor};
-            border: 2px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 12px ${deviceColor};
-            z-index: 2;
-          "></div>
+          ${centre}
         </div>`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
+        iconSize: [markSize, markSize],
+        iconAnchor: [markSize / 2, markSize / 2],
       });
 
       const marker = L.marker(mainLocation, { icon });
@@ -853,6 +878,7 @@ export default function LeafletMap({
     jevTooltips,
     simplifyTrail,
     activeTheme,
+    animateTrail,
   ]);
 
   drawTrailRef.current = () => {
@@ -860,10 +886,12 @@ export default function LeafletMap({
     const layer = trailLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
-    const { paths, offset, style, casing } = trailBaseRef.current;
+    const { paths, offset, style, casing, animate } = trailBaseRef.current;
     const drawn = offset ? paths.map((p) => offsetRight(map, p, TRAIL_LANE_OFFSET_PX)) : paths;
-    if (casing) for (const p of drawn) L.polyline(p, casing).addTo(layer);
-    for (const p of drawn) L.polyline(p, style).addTo(layer);
+    const renderer = trailRendererRef.current ?? undefined;
+    if (casing) for (const p of drawn) L.polyline(p, { ...casing, renderer }).addTo(layer);
+    // "trail-flow" moves the dashes forward along the line (CSS below), i.e. in the direction of travel.
+    for (const p of drawn) L.polyline(p, { ...style, renderer, className: animate ? "trail-flow" : undefined }).addTo(layer);
     arrowPathsRef.current = drawn;
   };
 
@@ -879,7 +907,6 @@ export default function LeafletMap({
     const MIN_PATH_PX = 40;
     const MAX_ARROWS = 300;
     const view = map.getBounds().pad(0.1);
-    const color = useDarkMarkers ? "rgba(255,255,255,0.7)" : deviceColor;
     let placed = 0;
 
     for (const path of arrowPathsRef.current) {
@@ -917,7 +944,7 @@ export default function LeafletMap({
           keyboard: false,
           icon: L.divIcon({
             className: "trail-arrow-marker",
-            html: `<div style="transform: rotate(${angle}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${color}; opacity: ${activeTheme === "streets" ? 1 : 0.8};${activeTheme === "streets" ? " filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);" : ""}">
+            html: `<div style="transform: rotate(${angle}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${deviceColor}; filter: ${ARROW_HALO_FILTER};">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="18 15 12 9 6 15"></polyline>
               </svg>
@@ -938,10 +965,9 @@ export default function LeafletMap({
     if (!map || !layer) return;
     layer.clearLayers();
     if (!aiPath || aiPath.legs.length === 0) return;
-    const casing = useDarkMarkers ? "rgba(0,0,0,0.75)" : "rgba(255,255,255,0.9)";
     const all: L.LatLngTuple[] = [];
     for (const leg of aiPath.legs) {
-      L.polyline(leg.coords, { pane: "aiPath", color: casing, weight: 8, opacity: 1, interactive: false }).addTo(layer);
+      L.polyline(leg.coords, { ...AI_PATH_CASING, pane: "aiPath" }).addTo(layer);
       L.polyline(leg.coords, {
         pane: "aiPath",
         color: deviceColor,
@@ -959,7 +985,7 @@ export default function LeafletMap({
       all.push(...leg.coords);
     }
     if (all.length > 1) map.flyToBounds(L.latLngBounds(all), { padding: [60, 60], duration: 0.6, maxZoom: 17 });
-  }, [aiPath, deviceColor, useDarkMarkers]);
+  }, [aiPath, deviceColor]);
 
   // Fly to a report picked in the Jev panel and open its tooltip.
   useEffect(() => {
@@ -1029,36 +1055,45 @@ export default function LeafletMap({
         .map-tiles-dark {
           filter: brightness(1.2) contrast(0.9);
         }
+        /* Close-zoom detail tiles for the light/dark themes, styled to sit close to Esri's gray canvas maps. */
+        .map-tiles-osm-light {
+          filter: grayscale(1) brightness(1.06) contrast(0.82);
+        }
+        .map-tiles-osm-dark {
+          filter: grayscale(1) invert(1) brightness(0.8) contrast(0.85);
+        }
         /* Streets: keep every map detail, just mute its colours so the device-coloured overlay stands out. */
         .map-tiles-streets {
           filter: saturate(0.5) contrast(0.92) brightness(1.04);
+        }
+        /* Direction of travel: the trail's dashes (6 on, 12 off = 18 px) flow toward the line's end. */
+        .trail-flow {
+          animation: trail-flow 1.1s linear infinite;
+        }
+        @keyframes trail-flow {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: -18; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .trail-flow { animation: none; }
         }
         @keyframes map-pulse {
           0% { transform: scale(1); opacity: 0.6; }
           70% { transform: scale(3); opacity: 0; }
           100% { transform: scale(3); opacity: 0; }
         }
+        /* Zoom buttons: the same opaque surface as the other map controls (.map-surface). */
+        .leaflet-bar {
+          border: 1px solid hsl(var(--border)) !important;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+        }
         .leaflet-bar a {
-          background-color: ${
-            activeTheme === "light" || activeTheme === "streets" 
-              ? "rgba(255, 255, 255, 0.3)" 
-              : "rgba(0, 0, 0, 0.3)"
-          } !important;
-          backdrop-filter: blur(12px) !important;
-          -webkit-backdrop-filter: blur(12px) !important;
-          color: ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "#000"
-              : "#fff"
-          } !important;
-          border-color: rgba(128, 128, 128, 0.2) !important;
+          background-color: hsl(var(--card)) !important;
+          color: hsl(var(--card-foreground)) !important;
+          border-color: hsl(var(--border)) !important;
         }
         .leaflet-bar a:hover {
-          background-color: ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "rgba(255, 255, 255, 0.8)"
-              : "rgba(0, 0, 0, 0.8)"
-          } !important;
+          background-color: hsl(var(--accent)) !important;
         }
 
         /* Custom Tooltip Styles */
@@ -1271,7 +1306,7 @@ export default function LeafletMap({
         {!isCentered && (
            <button
              onClick={fitMapToState}
-             className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 bg-card/30 backdrop-blur-md border border-border text-card-foreground"
+             className="absolute bottom-24 right-4 z-[999] p-2 rounded-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 map-surface"
              aria-label="Recenter Map"
            >
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

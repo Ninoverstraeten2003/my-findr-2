@@ -9,6 +9,7 @@ import { calculateBestLocation } from "@/lib/decrypt-payload";
 import { exportKML } from "@/lib/export-kml";
 import { timeSince } from "@/lib/app-utils";
 import DevicesPanel from "@/components/devices-panel";
+import LocationCard from "@/components/location-card";
 import { Button } from "@/components/ui/button";
 import TimelineControl from "@/components/timeline-control";
 import AiPanel, { type AiTab } from "@/components/ai-panel";
@@ -21,7 +22,7 @@ import type { AiPath } from "@/lib/ai-tools";
 import { useJevConfig } from "@/lib/use-jev-config";
 import { useJevLabels } from "@/lib/use-jev-labels";
 import { jevTooltipHtml, labelAnswer } from "@/lib/jev";
-import { Download, Copy, Settings, Loader2, Check, Map as MapIcon } from "lucide-react";
+import { Download, Copy, Settings, Loader2, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -361,6 +362,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           showHistory={showHistory}
           showDirectionArrows={settings.showDirectionArrows !== false}
           simplifyTrail={settings.simplifyTrail !== false}
+          animateTrail={settings.animateTrail !== false}
           mapTheme={settings.mapTheme || "system"}
           isVisible={isVisible}
           isLoading={isLoading}
@@ -409,7 +411,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       {/* Loading Indicator */}
       {isLoading && (
         <div className="absolute bottom-24 md:top-3 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card/30 backdrop-blur-md border border-border/50 shadow-xl pointer-events-auto touch-none">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full map-surface pointer-events-auto touch-none">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span className="text-sm font-medium text-foreground tabular-nums">
               {decryptProgress && decryptProgress.done < decryptProgress.total
@@ -447,35 +449,15 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           onDoubleClick={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/30 backdrop-blur-md border border-border shadow-md touch-none">
-            <div
-              className="w-2.5 h-2.5 rounded-full transition-colors duration-300"
-              style={{
-                backgroundColor: deviceColor,
-                boxShadow: `0 0 8px ${deviceColor}CC`,
-              }}
-            />
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-card-foreground">
-                {displayLocation.label}
-              </span>
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {displayLocation.lat.toFixed(5)}, {displayLocation.lon.toFixed(5)}
-              </span>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 ml-1"
-              onClick={() => {
-                const url = `https://www.google.com/maps/search/?api=1&query=${displayLocation.lat},${displayLocation.lon}`;
-                window.open(url, "_blank");
-              }}
-            >
-              <MapIcon className="h-3.5 w-3.5" />
-              <span className="sr-only">Open in Maps</span>
-            </Button>
-          </div>
+          <LocationCard
+            label={displayLocation.label}
+            lat={displayLocation.lat}
+            lon={displayLocation.lon}
+            deviceColor={deviceColor}
+            reports={showHistory ? filteredReports : []}
+            labels={jevConfig.enabled ? jevLabels : undefined}
+            onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
+          />
         </div>
       )}
     </div>

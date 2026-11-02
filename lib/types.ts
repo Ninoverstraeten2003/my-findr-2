@@ -40,6 +40,7 @@ export interface AppSettings {
   showHistory: boolean;
   showDirectionArrows?: boolean;
   simplifyTrail?: boolean;
+  animateTrail?: boolean;
   filterLowQuality?: boolean;
   filterMinConfidence?: number;
   filterMaxAccuracy?: number;

@@ -54,7 +54,7 @@ export default function AiPanel(props: AiPanelProps) {
     <>
       <button
         onClick={() => onOpenChange(true)}
-        className="absolute bottom-6 right-4 z-[1000] flex items-center gap-1.5 rounded-full border border-border bg-card/30 px-3 py-2 text-xs font-medium text-card-foreground shadow-md backdrop-blur-md touch-none active:scale-95 transition-transform"
+        className="absolute bottom-6 right-4 z-[1000] flex items-center gap-1.5 map-surface rounded-full px-3 py-2 text-xs font-medium touch-none active:scale-95 transition-transform"
         aria-label="Open AI"
       >
         {jev.run.running || session.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

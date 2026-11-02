@@ -2,8 +2,8 @@
 // Pure helpers shared by the settings editor, the map panel and the Leaflet markers.
 
 
-export const JEV_MODEL = "typesafe/jev-1.13";
-/** OpenRouter list price for typesafe/jev-1.13: $0.042 per 1M input tokens, output is free. */
+export const JEV_MODEL = "typesafe/jev-1.14";
+/** OpenRouter list price for typesafe/jev-1.14: $0.042 per 1M input tokens, output is free. */
 export const JEV_PRICE_PER_M_INPUT_TOKENS = 0.042;
 
 // Server-side limits (mirrored by app/api/jev/route.ts).
