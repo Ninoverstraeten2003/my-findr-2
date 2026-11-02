@@ -320,7 +320,17 @@ export default function LeafletMap({
        map.invalidateSize();
     }
 
+    // Leaflet only re-measures on window resize. When the container changes size any other way (phone rotation,
+    // browser bars, a resize while the map was hidden), tiles and the canvas kept covering the old size and the
+    // rest stayed blank. Re-measure whenever the container itself changes; skip while it's hidden (0 x 0).
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) map.invalidateSize({ debounceMoveend: true });
+    });
+    resizeObserver.observe(containerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.off("movestart", handleMoveStart);
       map.off("moveend", handleMoveEnd);
       map.off("zoomend", redrawTrail);
