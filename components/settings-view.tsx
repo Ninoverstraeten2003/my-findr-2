@@ -827,7 +827,8 @@ export default function SettingsView() {
                   <Label htmlFor="simplifyTrail">Simplify Trail</Label>
                   <span className="text-xs text-muted-foreground">
                     Merge time spent in one place, route the line around glitch spikes and curve it so return trips
-                    don&apos;t overlap. Every report dot stays on the map.
+                    don&apos;t overlap. Every report dot stays on the map. A stay is reports in a row within 1.5× their
+                    accuracy (75–200 m) of each other, lasting at least 10 minutes; hover its dotted area for details.
                   </span>
                 </div>
                 <Switch

@@ -206,7 +206,13 @@ export default function LeafletMap({
   // Trail lines are also redrawn per zoom: in simplified mode each trip is offset a few pixels to the right of
   // travel ("keep right"), so a trip and its return along the same road show as two lanes.
   const trailLayerRef = useRef<L.LayerGroup | null>(null);
-  const trailBaseRef = useRef<{ paths: L.LatLngTuple[][]; offset: boolean; style: L.PolylineOptions }>({
+  const trailBaseRef = useRef<{
+    paths: L.LatLngTuple[][];
+    offset: boolean;
+    style: L.PolylineOptions;
+    /** Wider light line drawn under the trail on busy maps, for contrast. */
+    casing?: L.PolylineOptions;
+  }>({
     paths: [],
     offset: false,
     style: {},
@@ -407,7 +413,7 @@ export default function LeafletMap({
     const nativeZoom = labelsUrl ? { maxNativeZoom: CANVAS_MAX_NATIVE_ZOOM, maxZoom: 19 } : {};
     const base = L.tileLayer(url, {
       attribution: attr,
-      className: activeTheme === "dark" ? "map-tiles-dark" : "",
+      className: activeTheme === "dark" ? "map-tiles-dark" : activeTheme === "streets" ? "map-tiles-streets" : "",
       zIndex: 1,
       ...nativeZoom,
     });
@@ -503,6 +509,8 @@ export default function LeafletMap({
     // Trail line. Order is always true seen-time order; "simplify" only changes how the line is routed
     // (stays collapsed, spikes routed around, curves). Every dot is still drawn below.
     const lineColor = useDarkMarkers ? "rgba(255,255,255,0.4)" : deviceColor;
+    // The Streets map is colourful and busy: give the overlay white outlines so it stays readable.
+    const busyMap = activeTheme === "streets";
     const lineStyle: L.PolylineOptions = {
       dashArray: "6, 12",
       weight: 2,
@@ -540,11 +548,13 @@ export default function LeafletMap({
           dashArray: "2, 5",
           fillColor: deviceColor,
           fillOpacity: 0.05,
-          pane: "trail",
+          // Same pane (canvas) as the dots and added before them: hovering an empty part of the stay reaches it,
+          // a dot on top still wins. In a lower pane the dots' full-map canvas swallowed every hover.
         })
           .bindTooltip(
             `<div class="jev-tip"><div class="jev-tip-row jev-tip-active"><span class="jev-tip-q">Stayed</span> ${duration}</div>` +
-              `<div class="jev-tip-detail">${fmtTime(stay.start)} – ${fmtTime(stay.end)}<br/>${stay.indices.length} reports within ~${Math.round(stay.radiusM)} m</div></div>`,
+              `<div class="jev-tip-detail">${fmtTime(stay.start)} – ${fmtTime(stay.end)}<br/>${stay.indices.length} reports within ~${Math.round(stay.radiusM)} m of the centre (80% of them)</div>` +
+              `<div class="jev-tip-detail" style="margin-top:3px">A stay: reports in a row within 1.5× their accuracy (75–200 m) of each other, lasting 10+ min</div></div>`,
             { direction: "top", opacity: 1, className: "custom-leaflet-tooltip", sticky: true },
           )
           .addTo(layerGroup);
@@ -578,7 +588,12 @@ export default function LeafletMap({
       }
       if (deduped.length > 1) trailPaths.push(deduped);
     }
-    trailBaseRef.current = { paths: trailPaths, offset: simplifyTrail, style: lineStyle };
+    trailBaseRef.current = {
+      paths: trailPaths,
+      offset: simplifyTrail,
+      style: busyMap ? { ...lineStyle, weight: 2.5, opacity: 0.9 } : lineStyle,
+      casing: busyMap ? { color: "#ffffff", weight: 6, opacity: 0.8, interactive: false, pane: "trail" } : undefined,
+    };
     drawTrailRef.current();
 
     // Report markers — skip absorbed indices (they're part of the latest cluster)
@@ -623,10 +638,12 @@ export default function LeafletMap({
           marker = L.circleMarker(
             [location.latitude, location.longitude],
             {
-              color: useDarkMarkers
-                ? `rgba(255,255,255,${confidence >= 2 ? 0.4 : 0.2})`
-                : `rgba(0,0,0,${confidence >= 2 ? 0.15 : 0.08})`,
-              weight: confidence >= 2 ? 1 : 0.5,
+              color: busyMap
+                ? "rgba(255,255,255,0.95)"
+                : useDarkMarkers
+                  ? `rgba(255,255,255,${confidence >= 2 ? 0.4 : 0.2})`
+                  : `rgba(0,0,0,${confidence >= 2 ? 0.15 : 0.08})`,
+              weight: busyMap ? 1.5 : confidence >= 2 ? 1 : 0.5,
               fillColor,
               fillOpacity,
               radius,
@@ -835,6 +852,7 @@ export default function LeafletMap({
     jevLabels,
     jevTooltips,
     simplifyTrail,
+    activeTheme,
   ]);
 
   drawTrailRef.current = () => {
@@ -842,8 +860,9 @@ export default function LeafletMap({
     const layer = trailLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
-    const { paths, offset, style } = trailBaseRef.current;
+    const { paths, offset, style, casing } = trailBaseRef.current;
     const drawn = offset ? paths.map((p) => offsetRight(map, p, TRAIL_LANE_OFFSET_PX)) : paths;
+    if (casing) for (const p of drawn) L.polyline(p, casing).addTo(layer);
     for (const p of drawn) L.polyline(p, style).addTo(layer);
     arrowPathsRef.current = drawn;
   };
@@ -898,7 +917,7 @@ export default function LeafletMap({
           keyboard: false,
           icon: L.divIcon({
             className: "trail-arrow-marker",
-            html: `<div style="transform: rotate(${angle}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${color}; opacity: 0.8;">
+            html: `<div style="transform: rotate(${angle}deg); width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; color: ${color}; opacity: ${activeTheme === "streets" ? 1 : 0.8};${activeTheme === "streets" ? " filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);" : ""}">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="18 15 12 9 6 15"></polyline>
               </svg>
@@ -1009,6 +1028,10 @@ export default function LeafletMap({
         }
         .map-tiles-dark {
           filter: brightness(1.2) contrast(0.9);
+        }
+        /* Streets: keep every map detail, just mute its colours so the device-coloured overlay stands out. */
+        .map-tiles-streets {
+          filter: saturate(0.5) contrast(0.92) brightness(1.04);
         }
         @keyframes map-pulse {
           0% { transform: scale(1); opacity: 0.6; }
