@@ -40,7 +40,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, defaultSettings } from "@/lib/use-settings";
 import { getAdvertisementKey } from "@/lib/decrypt-payload";
-import { pluralize } from "@/lib/app-utils";
 import { TIER_LIMITS } from "@/lib/config";
 import type { Device, AppSettings } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -56,8 +55,6 @@ import { cn, hexToRgba } from "@/lib/utils";
 import AiSettingsCard from "@/components/ai-settings-card";
 import { clearDecryptCache } from "@/lib/decrypt-cache";
 
-
-const DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 14, 30, 90, 365, 9999];
 
 const ACCURACY_OPTIONS = [10, 25, 50, 100, 200, 500, 1000, 9999];
 const CONFIDENCE_LABELS = ["Very Low", "Low", "Medium", "High"];
@@ -647,40 +644,6 @@ export default function SettingsView() {
           <CardTitle className="text-base">Preferences</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-4">
-              <Label>History Length</Label>
-              <Badge variant="secondary">
-                {settingsForm.days === 9999 
-                  ? "Unlimited" 
-                  : pluralize(settingsForm.days, "Day")}
-              </Badge>
-            </div>
-            {(() => {
-              // Find closest array index matching the current days setting
-              let currentIndex = DAYS_OPTIONS.indexOf(settingsForm.days);
-              if (currentIndex === -1) {
-                currentIndex = DAYS_OPTIONS.findIndex((d) => d >= settingsForm.days);
-                if (currentIndex === -1) currentIndex = DAYS_OPTIONS.length - 1;
-              }
-
-              return (
-                <Slider
-                  value={[currentIndex]}
-                  onValueChange={(value) =>
-                    setSettingsForm({ ...settingsForm, days: DAYS_OPTIONS[value[0]] })
-                  }
-                  onValueCommit={(value) =>
-                    updateStoredSettings({ ...settingsForm, days: DAYS_OPTIONS[value[0]] })
-                  }
-                  min={0}
-                  max={DAYS_OPTIONS.length - 1}
-                  step={1}
-                  className="w-full"
-                />
-              );
-            })()}
-          </div>
           <div className="flex flex-col gap-3">
             <Label>Appearance</Label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

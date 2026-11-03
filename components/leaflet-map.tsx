@@ -7,6 +7,7 @@ import type { DeviceReport } from "@/lib/types";
 import { markSvg, type JevLabel } from "@/lib/jev";
 import { reportKey } from "@/lib/report-features";
 import { buildTrail } from "@/lib/trail";
+import { TILE_FILTERS, filteredTileLayer } from "@/lib/filtered-tiles";
 import {
   AI_PATH_CASING,
   ARROW_HALO_FILTER,
@@ -141,8 +142,8 @@ function adjustColorForFreshness(hex: string, freshness: number, isDarkTheme: bo
 
 
 
-// Light, dark and streets all use the OpenStreetMap tiles (sharp up to zoom 19); light and dark are the same
-// tiles turned gray, or gray and inverted, by a CSS filter (.map-tiles-osm-light / .map-tiles-osm-dark).
+// Light, dark and streets all use the OpenStreetMap tiles (sharp up to zoom 19), recoloured as each tile loads
+// (lib/filtered-tiles.ts): gray (light), gray and inverted (dark), or muted colours (streets).
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SATELLITE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const MAX_ZOOM = 19;
@@ -227,7 +228,7 @@ export default function LeafletMap({
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const isProgrammaticMoveRef = useRef(false);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const tileLayerRef = useRef<L.GridLayer | null>(null);
   /** fitKey the map last zoomed to fit; undefined until the first fit. */
   const fittedKeyRef = useRef<string | undefined>(undefined);
 
@@ -404,14 +405,15 @@ export default function LeafletMap({
       tileLayerRef.current.remove();
     }
 
-    const satellite = activeTheme === "satellite";
-    const className =
-      activeTheme === "dark" ? "map-tiles-osm-dark" : activeTheme === "light" ? "map-tiles-osm-light" : satellite ? "" : "map-tiles-streets";
-    const layer = L.tileLayer(satellite ? SATELLITE_TILES : OSM_TILES, {
-      attribution: satellite ? ATTRIBUTIONS.esri : ATTRIBUTIONS.osm,
-      className,
-      maxZoom: MAX_ZOOM,
-    });
+    const layer =
+      activeTheme === "satellite"
+        ? L.tileLayer(SATELLITE_TILES, { attribution: ATTRIBUTIONS.esri, maxZoom: MAX_ZOOM })
+        : filteredTileLayer({
+            url: OSM_TILES,
+            filter: TILE_FILTERS[activeTheme],
+            attribution: ATTRIBUTIONS.osm,
+            maxZoom: MAX_ZOOM,
+          });
     layer.addTo(mapRef.current);
     tileLayerRef.current = layer;
   }, [activeTheme]);
@@ -1010,17 +1012,6 @@ export default function LeafletMap({
           background-color: ${
             activeTheme === "streets" ? "#aad3df" : activeTheme === "light" ? "#d6d6d6" : "#191a1a"
           } !important;
-        }
-        /* Light and dark themes: the OpenStreetMap tiles in gray, or gray and inverted. */
-        .map-tiles-osm-light {
-          filter: grayscale(1) brightness(1.06) contrast(0.82);
-        }
-        .map-tiles-osm-dark {
-          filter: grayscale(1) invert(1) brightness(0.8) contrast(0.85);
-        }
-        /* Streets: keep every map detail, just mute its colours so the device-coloured overlay stands out. */
-        .map-tiles-streets {
-          filter: saturate(0.5) contrast(0.92) brightness(1.04);
         }
         /* Direction of travel: the trail's dashes (6 on, 12 off = 18 px) flow toward the line's end. */
         .trail-flow {
