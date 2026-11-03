@@ -45,21 +45,26 @@ export default function LocationCard({ label, lat, lon, deviceColor, reports, la
 
   return (
     // Opens upwards on phones (the card sits at the bottom), downwards on larger screens (top left).
-    <div className="flex w-[min(18rem,calc(100vw-2rem))] flex-col-reverse gap-2 md:flex-col">
-      <div className="map-surface flex items-center gap-2 self-start rounded-lg px-3 py-2 touch-none">
+    <div className="flex w-[min(18rem,calc(100vw-2rem))] flex-col-reverse gap-2 md:w-80 md:flex-col">
+      <div className="map-surface flex max-w-full items-center gap-2 self-start rounded-lg px-3 py-2 touch-none">
         <LocationDot color={deviceColor} label={latestLabel} size={14} />
         <button
           type="button"
-          className="flex flex-col text-left disabled:cursor-default"
+          className="flex min-w-0 flex-col text-left disabled:cursor-default"
           onClick={() => setOpen((o) => !o)}
           disabled={!hasList}
           aria-expanded={hasList ? open : undefined}
         >
-          <span className="flex items-center gap-1 text-xs font-medium">
-            {label}
-            {latestLabel && <span className="hidden font-normal text-muted-foreground md:inline">· {latestLabel.label}</span>}
+          {/* One line: a long Jev label is cut off ("…"), never wrapped; the full label is in its title. */}
+          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-xs font-medium">
+            <span className="shrink-0">{label}</span>
+            {latestLabel && (
+              <span className="hidden min-w-0 truncate font-normal text-muted-foreground md:inline" title={latestLabel.label}>
+                · {latestLabel.label}
+              </span>
+            )}
             {hasList && (
-              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", open && "rotate-180")} />
+              <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
             )}
           </span>
           <span className="font-mono text-[10px] text-muted-foreground">
@@ -69,7 +74,7 @@ export default function LocationCard({ label, lat, lon, deviceColor, reports, la
         <Button
           size="icon"
           variant="ghost"
-          className="ml-1 h-7 w-7"
+          className="ml-1 h-7 w-7 shrink-0"
           onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`, "_blank")}
         >
           <MapIcon className="h-3.5 w-3.5" />
@@ -92,13 +97,15 @@ export default function LocationCard({ label, lat, lon, deviceColor, reports, la
                 >
                   <LocationDot color={deviceColor} label={l} size={14} />
                   <span className="min-w-0 flex-1">
-                    {new Date(p.date).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {l && <span className="text-muted-foreground"> · {l.label}</span>}
+                    <span className="block truncate" title={l?.label}>
+                      {new Date(p.date).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {l && <span className="text-muted-foreground"> · {l.label}</span>}
+                    </span>
                     <span className="block font-mono text-[10px] text-muted-foreground">
                       {p.location.latitude.toFixed(5)}, {p.location.longitude.toFixed(5)}
                     </span>

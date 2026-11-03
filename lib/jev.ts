@@ -325,21 +325,6 @@ export function labelAnswer(q: JevQuestionConfig, a: JevRawAnswer | undefined): 
   };
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
-
-/** Tooltip HTML listing each question's answer for one report (styled by .jev-tip in leaflet-map). */
-export function jevTooltipHtml(rows: { title: string; label: string; detail: string; active: boolean }[]): string {
-  if (!rows.length) return "";
-  return `<div class="jev-tip">${rows
-    .map(
-      (r) =>
-        `<div class="jev-tip-row${r.active ? " jev-tip-active" : ""}"><span class="jev-tip-q">${escapeHtml(r.title)}</span> ${escapeHtml(r.label)}<div class="jev-tip-detail">${escapeHtml(r.detail)}</div></div>`,
-    )
-    .join("")}</div>`;
-}
-
 // ── Cost ──────────────────────────────────────────────────────────────
 
 /**

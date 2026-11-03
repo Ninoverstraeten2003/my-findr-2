@@ -26,8 +26,9 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import PeriodPicker from "@/components/period-picker";
 import { pluralize, timeSince } from "@/lib/app-utils";
-import type { Device, BatteryStatus } from "@/lib/types";
+import type { Device, BatteryStatus, ReportPeriod } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -63,6 +64,9 @@ interface DevicesPanelProps {
   onDeviceChosen: (device: Device) => void;
   currentDevice: Device | undefined;
   isLoading?: boolean;
+  /** Which reports the map shows; picked in the header. */
+  period: ReportPeriod;
+  onPeriodChange: (period: ReportPeriod) => void;
 }
 
 export default function DevicesPanel({
@@ -70,6 +74,8 @@ export default function DevicesPanel({
   onDeviceChosen,
   currentDevice,
   isLoading,
+  period,
+  onPeriodChange,
 }: DevicesPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
@@ -90,25 +96,33 @@ export default function DevicesPanel({
   return (
     <div className="absolute top-3 right-3 z-[1001] w-72 touch-none">
       <div className="map-surface rounded-xl overflow-hidden">
-        {/* Header */}
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-card-foreground hover:bg-secondary/40 transition-colors touch-none"
-        >
-          <div className="flex items-center gap-2">
-            <span>{status}</span>
+        {/* Header: device count (collapses the list), the period shown on the map, collapse chevron */}
+        <div className="flex items-center gap-1 pr-2">
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex flex-1 items-center gap-2 py-3 pl-4 text-left text-sm font-medium text-card-foreground touch-none"
+          >
+            <span className="whitespace-nowrap">{status}</span>
             {isLoading && (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
             )}
-          </div>
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 text-muted-foreground transition-transform",
-              !isOpen && "-rotate-90"
-            )}
-          />
-        </button>
+          </button>
+          <PeriodPicker period={period} onChange={onPeriodChange} />
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="rounded-md p-1.5 hover:bg-secondary/60 touch-none"
+            aria-label={isOpen ? "Hide devices" : "Show devices"}
+          >
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                !isOpen && "-rotate-90"
+              )}
+            />
+          </button>
+        </div>
 
         {/* Device List */}
         {isOpen && (

@@ -53,6 +53,10 @@ export interface AppSettings {
   devices: Device[];
 }
 
+/** Which reports the map shows: the last N days (settings.days; 9999 = all), or days picked on the calendar
+ * (from the start of the first day to the end of the last, local time). */
+export type ReportPeriod = { kind: "recent"; days: number } | { kind: "days"; from: Date; to: Date };
+
 export type TierType = "free" | "pro" | "unlimited";
 
 export interface TierLimits {

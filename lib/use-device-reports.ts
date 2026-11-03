@@ -2,25 +2,29 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getReportsForDevice, getPollerReportsForDevice } from "./get-reports";
-import type { Device, DeviceReport } from "./types";
+import type { Device, DeviceReport, ReportPeriod } from "./types";
 
 export function useDeviceReports(
   device: Device | undefined,
   apiURL: string,
   username: string,
   password: string,
-  days: number,
+  period: ReportPeriod,
   usePoller: boolean,
   pollerApiKey: string,
   pollerTier: "free" | "pro" | "unlimited" = "free",
   pollInterval: number = 60
 ) {
   const queryClient = useQueryClient();
+  const picked = period.kind === "days" ? period : null;
+  const days = period.kind === "recent" ? period.days : 0;
+  // Picked days that are all in the past can't get new reports seen in them (only late arrivals): no polling.
+  const isPast = !!picked && picked.to.getTime() < Date.now() - 3_600_000;
 
   const queryKey = [
     "deviceReports",
     device?.id,
-    days,
+    picked ? `${picked.from.getTime()}-${picked.to.getTime()}` : days,
     username,
     password,
     usePoller,
@@ -29,7 +33,11 @@ export function useDeviceReports(
     pollInterval,
   ];
 
-  const staleTime = pollInterval * 1000;
+  const staleTime = isPast ? Infinity : pollInterval * 1000;
+  const inPicked = (r: DeviceReport) => {
+    const t = new Date(r.decrypedPayload.date).getTime();
+    return !picked || (t >= picked.from.getTime() && t <= picked.to.getTime());
+  };
 
   const query = useQuery({
     queryKey,
@@ -65,11 +73,13 @@ export function useDeviceReports(
           }
         }
 
+        // Picked days: every request (the later "only new ones" too) stays inside them.
         const newReports = await getPollerReportsForDevice(
           device,
           pollerApiKey,
           after,
-          seenAfter
+          picked ? picked.from.toISOString() : seenAfter,
+          picked ? picked.to.toISOString() : undefined
         );
 
         if (after && existingReports.length > 0) {
@@ -89,12 +99,15 @@ export function useDeviceReports(
         return newReports;
       }
 
-      return getReportsForDevice(device, apiURL, username, password, days);
+      // The direct API only takes "days back from now": fetch back to the first picked day, keep the picked days.
+      const daysBack = picked ? Math.ceil((Date.now() - picked.from.getTime()) / 86_400_000) + 1 : days;
+      const all = await getReportsForDevice(device, apiURL, username, password, daysBack);
+      return picked ? all.filter(inPicked) : all;
     },
     enabled: !!device && (!!apiURL || (usePoller && !!pollerApiKey)),
     refetchOnWindowFocus: false,
     staleTime,
-    refetchInterval: staleTime,
+    refetchInterval: isPast ? false : staleTime,
     retry: (failureCount, error: any) => {
       // Never retry on 404.
       if (error.status === 404) return false;

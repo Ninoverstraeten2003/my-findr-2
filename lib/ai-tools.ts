@@ -46,9 +46,22 @@ export const TOOL_SCHEMAS = [
   {
     type: "function",
     function: {
+      name: "get_latest",
+      description:
+        "Last report of each device (or one device): when it was seen, how long ago, where, accuracy and confidence. Use for \"where is it now\" questions.",
+      parameters: {
+        type: "object",
+        properties: { device: { type: "string", description: "Leave out for all devices" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_stays_and_trips",
       description:
-        "Summarise where a device stayed and the trips between stays in a time range. Start here for questions about a day or a period.",
+        "Summarise where a device stayed and the trips between stays in a time range, with durations, average trip speed and the periods without any report. Start here for questions about a day or a period.",
       parameters: {
         type: "object",
         properties: { device: { type: "string" }, from: timeParam("Start"), to: timeParam("End") },
@@ -104,6 +117,41 @@ export const TOOL_SCHEMAS = [
         type: "object",
         properties: { lat: { type: "number" }, lon: { type: "number" } },
         required: ["lat", "lon"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_place",
+      description:
+        "Coordinates of a named place or address (OpenStreetMap search), e.g. to check when a device was there with visits_near.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "Place name or address, with the town if known" } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "visits_near",
+      description:
+        "When a device was near a point in a time range: each visit is a run of reports within radius_m of the point, ended by a report outside it (single-report jumps are skipped). Gives start, end, report count and the longest gap between reports.",
+      parameters: {
+        type: "object",
+        properties: {
+          device: { type: "string" },
+          lat: { type: "number" },
+          lon: { type: "number" },
+          radius_m: { type: "integer", description: "Default 150, between 20 and 5000" },
+          from: timeParam("Start"),
+          to: timeParam("End"),
+        },
+        required: ["device", "lat", "lon", "from", "to"],
         additionalProperties: false,
       },
     },
@@ -220,6 +268,10 @@ function haversineM(a: [number, number], b: [number, number]): number {
 }
 
 const r5 = (x: number) => Math.round(x * 1e5) / 1e5;
+const minutesBetween = (a: number, b: number) => Math.round((b - a) / 60_000);
+/** Periods without any report that are at least this long are listed, so the model doesn't fill them in. */
+const GAP_MIN = 60;
+const MAX_GAPS = 40;
 const pos = (r: DeviceReport): [number, number] => [r.decrypedPayload.location.latitude, r.decrypedPayload.location.longitude];
 const time = (r: DeviceReport) => new Date(r.decrypedPayload.date);
 
@@ -234,17 +286,19 @@ function sampleEvenly<T>(items: T[], max: number): T[] {
 const placeCache = new Map<string, unknown>();
 let lastNominatim = 0;
 
-async function placeName(lat: number, lon: number) {
-  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if (placeCache.has(key)) return placeCache.get(key);
+async function nominatim(path: string) {
   const wait = lastNominatim + 1100 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastNominatim = Date.now();
-  const res = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&accept-language=en&lat=${lat}&lon=${lon}`,
-  );
+  const res = await fetch(`https://nominatim.openstreetmap.org/${path}`);
   if (!res.ok) throw new Error(`place lookup failed (${res.status})`);
-  const d = await res.json();
+  return res.json();
+}
+
+async function placeName(lat: number, lon: number) {
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (placeCache.has(key)) return placeCache.get(key);
+  const d = await nominatim(`reverse?format=jsonv2&zoom=17&accept-language=en&lat=${lat}&lon=${lon}`);
   const a = d.address ?? {};
   const result = {
     name: d.name || undefined,
@@ -254,6 +308,17 @@ async function placeName(lat: number, lon: number) {
     country: a.country_code?.toUpperCase(),
     kind: d.type || d.category,
   };
+  placeCache.set(key, result);
+  return result;
+}
+
+async function findPlace(query: string) {
+  const key = `q:${query.toLowerCase()}`;
+  if (placeCache.has(key)) return placeCache.get(key);
+  const d = (await nominatim(
+    `search?format=jsonv2&limit=5&accept-language=en&q=${encodeURIComponent(query)}`,
+  )) as { display_name: string; lat: string; lon: string; type?: string; category?: string }[];
+  const result = d.map((p) => ({ name: p.display_name, lat: r5(+p.lat), lon: r5(+p.lon), kind: p.type || p.category }));
   placeCache.set(key, result);
   return result;
 }
@@ -338,6 +403,84 @@ export async function runTool(
     case "list_devices":
       return { result: { devices: ctx.devices.map((d) => d.name) }, summary: "Listed your devices" };
 
+    case "get_latest": {
+      const devices = args.device ? [findDevice(ctx, args.device)] : ctx.devices;
+      const now = Date.now();
+      const latest = await Promise.all(
+        devices.map(async (device) => {
+          // Look back further only when nothing turned up, so the usual case loads one day.
+          for (const days of [1, 7, 30]) {
+            const reports = await ctx.loadReports(device, new Date(now - days * 86_400_000), new Date(now));
+            const r = reports[reports.length - 1];
+            if (!r) continue;
+            const p = r.decrypedPayload;
+            return {
+              device: device.name,
+              time: formatLocal(time(r)),
+              minutes_ago: minutesBetween(time(r).getTime(), now),
+              lat: r5(p.location.latitude),
+              lon: r5(p.location.longitude),
+              accuracy_m: p.location.accuracy,
+              confidence: p.confidence,
+              reports_last_24h: reports.filter((x) => now - time(x).getTime() <= 86_400_000).length,
+            };
+          }
+          return { device: device.name, seen: "no report in the last 30 days" };
+        }),
+      );
+      return { result: { latest }, summary: `Read the latest report of ${devices.length === 1 ? devices[0].name : "every device"}` };
+    }
+
+    case "find_place": {
+      const query = String(args.query ?? "").trim();
+      if (!query) throw new Error("query missing");
+      const results = await findPlace(query);
+      return { result: { results }, summary: `Searched for "${query}"` };
+    }
+
+    case "visits_near": {
+      const device = findDevice(ctx, args.device);
+      const center: [number, number] = [Number(args.lat), Number(args.lon)];
+      if (!center.every(Number.isFinite)) throw new Error("lat/lon missing");
+      const radius = Math.min(5000, Math.max(20, Number(args.radius_m) || 150));
+      const reports = await ctx.loadReports(device, parseTime(args.from), parseTime(args.to, true));
+      const trail = buildTrail(
+        reports.map((r) => ({ lat: pos(r)[0], lon: pos(r)[1], acc: r.decrypedPayload.location.accuracy, t: time(r).getTime() })),
+      );
+      const visits: { start: string; end: string; minutes: number; reports: number; closest_m: number; longest_gap_min: number }[] = [];
+      let run: DeviceReport[] = [];
+      let closest = Infinity;
+      const flush = () => {
+        if (run.length) {
+          let gap = 0;
+          for (let k = 1; k < run.length; k++) gap = Math.max(gap, minutesBetween(time(run[k - 1]).getTime(), time(run[k]).getTime()));
+          visits.push({
+            start: formatLocal(time(run[0])),
+            end: formatLocal(time(run[run.length - 1])),
+            minutes: minutesBetween(time(run[0]).getTime(), time(run[run.length - 1]).getTime()),
+            reports: run.length,
+            closest_m: Math.round(closest),
+            longest_gap_min: gap,
+          });
+        }
+        run = [];
+        closest = Infinity;
+      };
+      reports.forEach((r, i) => {
+        if (trail.spikeIndices.has(i)) return;
+        const d = haversineM(center, pos(r));
+        if (d <= radius) {
+          run.push(r);
+          closest = Math.min(closest, d);
+        } else flush();
+      });
+      flush();
+      return {
+        result: { device: device.name, radius_m: radius, reports_in_range: reports.length, visits: visits.slice(0, 60), more_visits: Math.max(0, visits.length - 60) },
+        summary: `Found ${visits.length} visit${visits.length === 1 ? "" : "s"} of ${device.name} near that point`,
+      };
+    }
+
     case "get_reports": {
       const device = findDevice(ctx, args.device);
       const from = parseTime(args.from);
@@ -376,31 +519,46 @@ export async function runTool(
         end: formatLocal(new Date(s.end)),
         lat: r5(s.center[0]),
         lon: r5(s.center[1]),
+        minutes: minutesBetween(s.start, s.end),
         radius_m: Math.round(s.radiusM),
         reports: s.indices.length,
       }));
-      // Trips: the reports between one stay and the next (or before the first / after the last).
+      // Trips: from the last report of one stay to the first of the next (or from the first / to the last report),
+      // so their times, distance and speed cover the whole move, not only the reports seen while moving.
       const inStay = new Set(trail.stays.flatMap((s) => s.indices));
       const trips: unknown[] = [];
       let run: number[] = [];
-      const flush = () => {
-        if (run.length === 0) return;
-        const pts = run.map((i) => reports[i]);
-        let km = 0;
-        for (let k = 1; k < pts.length; k++) km += haversineM(pos(pts[k - 1]), pos(pts[k])) / 1000;
-        trips.push({
-          from: formatLocal(time(pts[0])),
-          to: formatLocal(time(pts[pts.length - 1])),
-          reports: pts.length,
-          path_km: Math.round(km * 10) / 10,
-          straight_km: Math.round((haversineM(pos(pts[0]), pos(pts[pts.length - 1])) / 1000) * 10) / 10,
-        });
+      let moving = 0;
+      let lastStay = -1;
+      const flush = (endStay?: number) => {
+        if (moving > 0) {
+          const pts = (endStay === undefined ? run : [...run, endStay]).map((i) => reports[i]);
+          let km = 0;
+          for (let k = 1; k < pts.length; k++) km += haversineM(pos(pts[k - 1]), pos(pts[k])) / 1000;
+          const minutes = minutesBetween(time(pts[0]).getTime(), time(pts[pts.length - 1]).getTime());
+          trips.push({
+            from: formatLocal(time(pts[0])),
+            to: formatLocal(time(pts[pts.length - 1])),
+            minutes,
+            reports_while_moving: moving,
+            path_km: Math.round(km * 10) / 10,
+            ...(minutes > 0 ? { avg_kmh: Math.round((km / minutes) * 60) } : {}),
+            straight_km: Math.round((haversineM(pos(pts[0]), pos(pts[pts.length - 1])) / 1000) * 10) / 10,
+          });
+        }
         run = [];
+        moving = 0;
       };
       reports.forEach((_, i) => {
         if (trail.spikeIndices.has(i)) return;
-        if (inStay.has(i)) flush();
-        else run.push(i);
+        if (inStay.has(i)) {
+          flush(i);
+          lastStay = i;
+        } else {
+          if (run.length === 0 && lastStay >= 0) run.push(lastStay);
+          run.push(i);
+          moving++;
+        }
       });
       flush();
       const spikes = [...trail.spikeIndices].map((i) => ({
@@ -410,6 +568,11 @@ export async function runTool(
         accuracy_m: reports[i].decrypedPayload.location.accuracy,
         confidence: reports[i].decrypedPayload.confidence,
       }));
+      const gaps: { from: string; to: string; minutes: number }[] = [];
+      for (let i = 1; i < reports.length && gaps.length < MAX_GAPS; i++) {
+        const minutes = minutesBetween(time(reports[i - 1]).getTime(), time(reports[i]).getTime());
+        if (minutes >= GAP_MIN) gaps.push({ from: formatLocal(time(reports[i - 1])), to: formatLocal(time(reports[i])), minutes });
+      }
       return {
         result: {
           device: device.name,
@@ -419,6 +582,7 @@ export async function runTool(
           stays,
           trips,
           single_report_jumps: spikes,
+          [`no_reports_for_${GAP_MIN}_min_or_more`]: gaps,
         },
         summary: `Summarised ${device.name}: ${stays.length} stays, ${trips.length} trips`,
       };

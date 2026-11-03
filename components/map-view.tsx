@@ -21,10 +21,9 @@ import { createReportLoader } from "@/lib/report-loader";
 import type { AiPath } from "@/lib/ai-tools";
 import { useJevConfig } from "@/lib/use-jev-config";
 import { useJevLabels } from "@/lib/use-jev-labels";
-import { jevTooltipHtml, labelAnswer } from "@/lib/jev";
 import { Download, Copy, Settings, Loader2, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { Device } from "@/lib/types";
+import type { Device, ReportPeriod } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // Dynamically import the Leaflet map to avoid SSR issues
@@ -48,7 +47,7 @@ const TIMELINE_ENABLED = false;
 
 export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
   const { toast } = useToast();
-  const [settings] = useSettings();
+  const [settings, updateSettings] = useSettings();
   const [currentDevice, setCurrentDevice] = useState<Device>();
   const [currentPosition, setCurrentPosition] = useState<[number, number]>([
     50.866667, 4.333333,
@@ -67,6 +66,26 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
   const showHistory = settings.showHistory !== false;
 
+  // Period on the map: the last N days (stored as Settings › History Length), or days picked on the calendar
+  // (kept for this visit only).
+  const [pickedDays, setPickedDays] = useState<{ from: Date; to: Date } | null>(null);
+  const period = useMemo<ReportPeriod>(
+    () => (pickedDays ? { kind: "days", ...pickedDays } : { kind: "recent", days: settings.days }),
+    [pickedDays, settings.days],
+  );
+  const onPeriodChange = useCallback(
+    (p: ReportPeriod) => {
+      if (p.kind === "days") {
+        setPickedDays({ from: p.from, to: p.to });
+        return;
+      }
+      setPickedDays(null);
+      if (p.days !== settings.days) updateSettings({ ...settings, days: p.days });
+    },
+    [settings, updateSettings],
+  );
+  const periodKey = pickedDays ? `${pickedDays.from.getTime()}-${pickedDays.to.getTime()}` : `last-${settings.days}`;
+
   const {
     data: reportsData,
     error,
@@ -78,7 +97,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     settings.apiURL,
     settings.username,
     settings.password,
-    settings.days,
+    period,
     settings.usePoller,
     settings.pollerApiKey,
     settings.pollerTier,
@@ -262,17 +281,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     () => jev.labelsFor(jevConfig.activeQuestionId),
     [jev.labelsFor, jevConfig.activeQuestionId],
   );
-  const jevTooltips = useMemo(() => {
-    const out = new Map<string, string>();
-    for (const [key, rec] of jev.answers) {
-      const rows = jev.questions.flatMap((q) => {
-        const l = labelAnswer(q, rec[q.id]);
-        return l ? [{ title: q.title, label: l.label, detail: l.detail, active: q.id === jevConfig.activeQuestionId }] : [];
-      });
-      out.set(key, jevTooltipHtml(rows));
-    }
-    return out;
-  }, [jev.answers, jev.questions, jevConfig.activeQuestionId]);
   const [focusRequest, setFocusRequest] = useState<{ key: string; nonce: number } | null>(null);
 
   // AI chat: tools read reports through this loader (same fetch + decrypt cache as the map) and can draw a path.
@@ -314,7 +322,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       return {
         lat: loc.latitude,
         lon: loc.longitude,
-        label: "Latest Location",
+        // Picked days in the past: the last report of those days, not of now.
+        label: pickedDays && pickedDays.to.getTime() < Date.now() ? "Last Location" : "Latest Location",
       };
     }
     if (guessedLocation && !showHistory) {
@@ -325,7 +334,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
       };
     }
     return null;
-  }, [showHistory, filteredReports, guessedLocation]);
+  }, [showHistory, filteredReports, guessedLocation, pickedDays]);
 
   // Missing settings view
   if (isMissingRequiredSettings) {
@@ -353,7 +362,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         className={cn("h-full w-full", isSwitchingDevice && "pointer-events-none")}
       >
         <LeafletMap
-          deviceId={currentDevice?.id}
+          fitKey={currentDevice ? `${currentDevice.id}|${periodKey}` : undefined}
           center={currentPosition}
           zoom={zoom}
           filteredReports={filteredReports}
@@ -368,7 +377,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           isLoading={isLoading}
           aiPath={aiPath}
           jevLabels={jevConfig.enabled ? jevLabels : undefined}
-          jevTooltips={jevConfig.enabled ? jevTooltips : undefined}
           focusRequest={focusRequest}
           onCopyLocation={(lat, lon) => {
             const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
@@ -384,6 +392,8 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         onDeviceChosen={onDeviceChosen}
         currentDevice={currentDevice}
         isLoading={isLoading}
+        period={period}
+        onPeriodChange={onPeriodChange}
       />
 
       {/* AI: chat (Ask) and Jev labels (Labels) in one sheet */}

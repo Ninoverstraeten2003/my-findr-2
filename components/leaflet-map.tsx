@@ -141,31 +141,20 @@ function adjustColorForFreshness(hex: string, freshness: number, isDarkTheme: bo
 
 
 
-// CARTO basemaps now require an API key, so dark/light use Esri's keyless Canvas maps
-// (base + separate label layer; native tiles stop at zoom 16 and are upscaled beyond that).
-const ESRI_CANVAS = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
-const TILE_LAYERS = {
-  dark: `${ESRI_CANVAS}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
-  darkLabels: `${ESRI_CANVAS}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
-  light: `${ESRI_CANVAS}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
-  lightLabels: `${ESRI_CANVAS}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
-  satellite:
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  streets: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-};
-const CANVAS_MAX_NATIVE_ZOOM = 16;
-/** Above Esri Canvas' last detailed zoom, light/dark switch to OpenStreetMap tiles (sharp to z19), filtered to match. */
-const OSM_DETAIL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+// Light, dark and streets all use the OpenStreetMap tiles (sharp up to zoom 19); light and dark are the same
+// tiles turned gray, or gray and inverted, by a CSS filter (.map-tiles-osm-light / .map-tiles-osm-dark).
+const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const SATELLITE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const MAX_ZOOM = 19;
 
 const ATTRIBUTIONS = {
-  esriCanvas: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
   esri: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
   osm: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 };
 
 interface LeafletMapProps {
-  deviceId?: string;
+  /** The map zooms to fit the reports again when this changes (another device or period). */
+  fitKey?: string;
   center: [number, number];
   zoom: number;
   filteredReports: DeviceReport[];
@@ -178,8 +167,6 @@ interface LeafletMapProps {
   isVisible: boolean;
   /** Active Jev question's label per report key: sets the dot's shape (never hides a dot). */
   jevLabels?: Map<string, JevLabel>;
-  /** Jev answers for every question per report key, shown in the tooltip. */
-  jevTooltips?: Map<string, string>;
   /** Fly to a report and open its tooltip; nonce lets the same report be focused again. */
   focusRequest?: { key: string; nonce: number } | null;
   /** Collapse stays, route around spikes and curve the trail line (dots are unaffected). */
@@ -193,7 +180,7 @@ interface LeafletMapProps {
 }
 
 export default function LeafletMap({
-  deviceId,
+  fitKey,
   center,
   zoom,
   filteredReports,
@@ -205,7 +192,6 @@ export default function LeafletMap({
   onCopyLocation,
   isVisible,
   jevLabels,
-  jevTooltips,
   focusRequest,
   simplifyTrail = true,
   animateTrail = true,
@@ -213,6 +199,7 @@ export default function LeafletMap({
   aiPath = null,
 }: LeafletMapProps) {
   const aiLayerRef = useRef<L.LayerGroup | null>(null);
+  const aiRendererRef = useRef<L.Renderer | null>(null);
   const markersByKeyRef = useRef<Map<string, L.Layer>>(new Map());
   // Direction arrows live in their own layer: they're placed by screen distance, so they're redrawn on move/zoom.
   const arrowLayerRef = useRef<L.LayerGroup | null>(null);
@@ -240,8 +227,9 @@ export default function LeafletMap({
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const isProgrammaticMoveRef = useRef(false);
-  const tileLayerRef = useRef<L.LayerGroup | null>(null);
-  const hasInitialFitRef = useRef(false);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  /** fitKey the map last zoomed to fit; undefined until the first fit. */
+  const fittedKeyRef = useRef<string | undefined>(undefined);
 
   const isDark =
     typeof window !== "undefined" &&
@@ -299,13 +287,22 @@ export default function LeafletMap({
     // Tile layer managed in separate useEffect
 
     // Trail pane sits under the report dots (overlayPane is 400).
-    map.createPane("trail").style.zIndex = "390";
+    // Custom panes don't catch the mouse themselves: a full-map canvas or SVG in a pane above the dots' canvas
+    // (overlayPane) covered every dot, so only the latest marker (marker pane) still showed its tooltip. Only
+    // interactive SVG paths in them (class leaflet-interactive) take pointer events again.
+    const trailPane = map.createPane("trail");
+    trailPane.style.zIndex = "390";
+    trailPane.style.pointerEvents = "none";
     trailRendererRef.current = L.svg({ pane: "trail" });
     trailLayerRef.current = L.layerGroup().addTo(map);
     const layerGroup = L.layerGroup().addTo(map);
     arrowLayerRef.current = L.layerGroup().addTo(map);
     // AI path above the trail and dots' shapes, below markers and tooltips.
-    map.createPane("aiPath").style.zIndex = "450";
+    const aiPane = map.createPane("aiPath");
+    aiPane.style.zIndex = "450";
+    aiPane.style.pointerEvents = "none";
+    // SVG, not the default canvas: a canvas can't let hovers through to the dots under it.
+    aiRendererRef.current = L.svg({ pane: "aiPath" });
     aiLayerRef.current = L.layerGroup().addTo(map);
     const redrawTrail = () => drawTrailRef.current();
     const redrawArrows = () => drawArrowsRef.current();
@@ -385,9 +382,9 @@ export default function LeafletMap({
   const fitRef = useRef(fitMapToState);
   fitRef.current = fitMapToState;
 
-  // Only auto-fit on initial load / device switch, not on poll updates
+  // Only auto-fit on initial load / device or period switch, not on poll updates
   useEffect(() => {
-    if (hasInitialFitRef.current) return; // Already fitted for this device
+    if (fittedKeyRef.current === (fitKey ?? "")) return; // Already fitted for this device and period
     if (filteredReports.length === 0) return; // No data yet
     if (isLoading) return; // Wait until every report is in, so the zoom covers all of them
 
@@ -396,13 +393,8 @@ export default function LeafletMap({
     } else {
       fitMapToState();
     }
-    hasInitialFitRef.current = true;
-  }, [fitMapToState, zoom, isVisible, filteredReports.length, isLoading]);
-
-  // Reset initial fit when device changes using explicit deviceId
-  useEffect(() => {
-    hasInitialFitRef.current = false;
-  }, [deviceId]);
+    fittedKeyRef.current = fitKey ?? "";
+  }, [fitMapToState, zoom, isVisible, filteredReports.length, isLoading, fitKey]);
 
   // Handle Map Theme
   useEffect(() => {
@@ -412,55 +404,14 @@ export default function LeafletMap({
       tileLayerRef.current.remove();
     }
 
-    let url = TILE_LAYERS.light;
-    let labelsUrl: string | null = TILE_LAYERS.lightLabels;
-    let attr = ATTRIBUTIONS.esriCanvas;
-
-    switch (activeTheme) {
-      case "dark":
-        url = TILE_LAYERS.dark;
-        labelsUrl = TILE_LAYERS.darkLabels;
-        attr = ATTRIBUTIONS.esriCanvas;
-        break;
-      case "light":
-        url = TILE_LAYERS.light;
-        labelsUrl = TILE_LAYERS.lightLabels;
-        attr = ATTRIBUTIONS.esriCanvas;
-        break;
-      case "satellite":
-        url = TILE_LAYERS.satellite;
-        labelsUrl = null;
-        attr = ATTRIBUTIONS.esri;
-        break;
-      case "streets":
-        url = TILE_LAYERS.streets;
-        labelsUrl = null;
-        attr = ATTRIBUTIONS.osm;
-        break;
-    }
-
-    // Esri Canvas (light/dark) has no detail past z16; enlarging its z16 tiles looked blocky. So it stops at z16 and
-    // OpenStreetMap tiles, filtered gray (light) or inverted gray (dark), take over for z17-19.
-    const zoomRange = labelsUrl ? { maxZoom: CANVAS_MAX_NATIVE_ZOOM } : { maxZoom: MAX_ZOOM };
-    const base = L.tileLayer(url, {
-      attribution: attr,
-      className: activeTheme === "dark" ? "map-tiles-dark" : activeTheme === "streets" ? "map-tiles-streets" : "",
-      zIndex: 1,
-      ...zoomRange,
+    const satellite = activeTheme === "satellite";
+    const className =
+      activeTheme === "dark" ? "map-tiles-osm-dark" : activeTheme === "light" ? "map-tiles-osm-light" : satellite ? "" : "map-tiles-streets";
+    const layer = L.tileLayer(satellite ? SATELLITE_TILES : OSM_TILES, {
+      attribution: satellite ? ATTRIBUTIONS.esri : ATTRIBUTIONS.osm,
+      className,
+      maxZoom: MAX_ZOOM,
     });
-    const layer = L.layerGroup([base]);
-    if (labelsUrl) {
-      layer.addLayer(L.tileLayer(labelsUrl, { zIndex: 2, ...zoomRange }));
-      layer.addLayer(
-        L.tileLayer(OSM_DETAIL, {
-          attribution: ATTRIBUTIONS.osm,
-          className: activeTheme === "dark" ? "map-tiles-osm-dark" : "map-tiles-osm-light",
-          minZoom: CANVAS_MAX_NATIVE_ZOOM + 1,
-          maxZoom: MAX_ZOOM,
-          zIndex: 1,
-        }),
-      );
-    }
     layer.addTo(mapRef.current);
     tileLayerRef.current = layer;
   }, [activeTheme]);
@@ -710,7 +661,6 @@ export default function LeafletMap({
             <!-- Pin -->
             <div class="watch-pin" style="background-color: ${deviceColor};"></div>
           </div>
-          ${jevTooltips?.get(key) ?? ""}
         `;
 
         marker.bindTooltip(tooltipContent, {
@@ -857,7 +807,6 @@ export default function LeafletMap({
             <!-- Pin -->
             <div class="watch-pin" style="background-color: ${deviceColor};"></div>
           </div>
-          ${jevTooltips?.get(reportKey(latestReport)) ?? ""}
         `;
 
         marker.bindTooltip(latestTooltip, {
@@ -885,8 +834,7 @@ export default function LeafletMap({
     useDarkMarkers,
     onCopyLocation,
     jevLabels,
-    jevTooltips,
-    simplifyTrail,
+      simplifyTrail,
     activeTheme,
     animateTrail,
   ]);
@@ -975,11 +923,13 @@ export default function LeafletMap({
     if (!map || !layer) return;
     layer.clearLayers();
     if (!aiPath || aiPath.legs.length === 0) return;
+    const renderer = aiRendererRef.current ?? undefined;
     const all: L.LatLngTuple[] = [];
     for (const leg of aiPath.legs) {
-      L.polyline(leg.coords, { ...AI_PATH_CASING, pane: "aiPath" }).addTo(layer);
+      L.polyline(leg.coords, { ...AI_PATH_CASING, pane: "aiPath", renderer }).addTo(layer);
       L.polyline(leg.coords, {
         pane: "aiPath",
+        renderer,
         color: deviceColor,
         weight: 4,
         opacity: 0.95,
@@ -1056,16 +1006,12 @@ export default function LeafletMap({
     <>
       <style>{`
         .leaflet-container {
+          /* Shown while tiles load: roughly the colour of each theme's water/background. */
           background-color: ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "#aad3df"
-: "#191a1a" // dark grey background for dark mode tiles
+            activeTheme === "streets" ? "#aad3df" : activeTheme === "light" ? "#d6d6d6" : "#191a1a"
           } !important;
         }
-        .map-tiles-dark {
-          filter: brightness(1.2) contrast(0.9);
-        }
-        /* Close-zoom detail tiles for the light/dark themes, styled to sit close to Esri's gray canvas maps. */
+        /* Light and dark themes: the OpenStreetMap tiles in gray, or gray and inverted. */
         .map-tiles-osm-light {
           filter: grayscale(1) brightness(1.06) contrast(0.82);
         }
