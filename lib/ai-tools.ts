@@ -48,10 +48,13 @@ export const TOOL_SCHEMAS = [
     function: {
       name: "get_latest",
       description:
-        "Last report of each device (or one device): when it was seen, how long ago, where, accuracy and confidence. Use for \"where is it now\" questions.",
+        "Last report of each device (or one device): when it was seen, how long ago, where, accuracy and confidence. Use for \"where is it now\" questions. With oldest, also the first report ever stored and the total count (loads the whole history, slower).",
       parameters: {
         type: "object",
-        properties: { device: { type: "string", description: "Leave out for all devices" } },
+        properties: {
+          device: { type: "string", description: "Leave out for all devices" },
+          oldest: { type: "boolean", description: "Also return the oldest stored report" },
+        },
         additionalProperties: false,
       },
     },
@@ -75,7 +78,7 @@ export const TOOL_SCHEMAS = [
     function: {
       name: "get_reports",
       description:
-        "Raw location reports of a device in a time range: time, lat, lon, accuracy (m), Apple confidence (1-3). Evenly sampled down to max_rows if there are more.",
+        "Raw location reports of a device in a time range: time, lat, lon, accuracy (m), Apple confidence (1-3). If the range has more than max_rows reports, the rows are evenly spaced over them and always include the first and the last report of the range; first_in_range / last_in_range give those times too.",
       parameters: {
         type: "object",
         properties: {
@@ -406,29 +409,51 @@ export async function runTool(
     case "get_latest": {
       const devices = args.device ? [findDevice(ctx, args.device)] : ctx.devices;
       const now = Date.now();
+      const oldest = !!args.oldest;
+      const facts = (r: DeviceReport) => {
+        const p = r.decrypedPayload;
+        return {
+          time: formatLocal(time(r)),
+          lat: r5(p.location.latitude),
+          lon: r5(p.location.longitude),
+          accuracy_m: p.location.accuracy,
+          confidence: p.confidence,
+        };
+      };
       const latest = await Promise.all(
         devices.map(async (device) => {
+          if (oldest) {
+            // Whole history: Find My times start in 2001, so nothing can be older.
+            const all = await ctx.loadReports(device, new Date(2001, 0, 1), new Date(now));
+            if (all.length === 0) return { device: device.name, seen: "no reports stored" };
+            const last = all[all.length - 1];
+            return {
+              device: device.name,
+              total_reports: all.length,
+              oldest: facts(all[0]),
+              latest: { ...facts(last), minutes_ago: minutesBetween(time(last).getTime(), now) },
+            };
+          }
           // Look back further only when nothing turned up, so the usual case loads one day.
           for (const days of [1, 7, 30]) {
             const reports = await ctx.loadReports(device, new Date(now - days * 86_400_000), new Date(now));
             const r = reports[reports.length - 1];
             if (!r) continue;
-            const p = r.decrypedPayload;
             return {
               device: device.name,
-              time: formatLocal(time(r)),
+              ...facts(r),
               minutes_ago: minutesBetween(time(r).getTime(), now),
-              lat: r5(p.location.latitude),
-              lon: r5(p.location.longitude),
-              accuracy_m: p.location.accuracy,
-              confidence: p.confidence,
               reports_last_24h: reports.filter((x) => now - time(x).getTime() <= 86_400_000).length,
             };
           }
           return { device: device.name, seen: "no report in the last 30 days" };
         }),
       );
-      return { result: { latest }, summary: `Read the latest report of ${devices.length === 1 ? devices[0].name : "every device"}` };
+      const who = devices.length === 1 ? devices[0].name : "every device";
+      return {
+        result: { latest },
+        summary: oldest ? `Read the oldest and latest report of ${who}` : `Read the latest report of ${who}`,
+      };
     }
 
     case "find_place": {
@@ -491,15 +516,23 @@ export async function runTool(
         const p = r.decrypedPayload;
         return `${formatLocal(time(r))},${r5(p.location.latitude)},${r5(p.location.longitude)},${p.location.accuracy},${p.confidence}`;
       });
+      const sampled = rows.length < reports.length;
       return {
         result: {
           device: device.name,
           total_reports: reports.length,
           shown: rows.length,
+          ...(reports.length
+            ? { first_in_range: formatLocal(time(reports[0])), last_in_range: formatLocal(time(reports[reports.length - 1])) }
+            : {}),
+          rows_are: sampled ? "evenly spaced, including the first and last report of the range" : "every report in the range",
           columns: "time,lat,lon,accuracy_m,confidence",
           rows: rows.join("\n"),
         },
-        summary: `Read ${reports.length} reports of ${device.name}`,
+        // Say how many rows the model actually got, not only how many exist.
+        summary: sampled
+          ? `Read ${rows.length} of ${reports.length.toLocaleString()} reports of ${device.name} (evenly spaced)`
+          : `Read ${reports.length.toLocaleString()} report${reports.length === 1 ? "" : "s"} of ${device.name}`,
       };
     }
 
