@@ -17,7 +17,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0e1a",
+  // Browser bar / status bar colour on phones: the header's colour (--card) in each theme.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#090e1a" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
