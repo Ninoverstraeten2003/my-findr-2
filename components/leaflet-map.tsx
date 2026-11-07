@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { DeviceReport } from "@/lib/types";
-import { markSvg, type JevLabel } from "@/lib/jev";
-import { reportKey } from "@/lib/report-features";
-import { buildTrail } from "@/lib/trail";
+import { reportKey } from "@/lib/report-key";
+import { buildTrail, type Stay } from "@/lib/trail";
+import { QUALITY_LABEL, qualitySvg, type ReportQuality } from "@/lib/report-quality";
+import { formatDuration } from "@/lib/format";
 import { TILE_FILTERS, filteredTileLayer } from "@/lib/filtered-tiles";
 import {
   AI_PATH_CASING,
@@ -28,37 +29,15 @@ const MODE_DASH: Record<TravelMode, string | undefined> = {
   unknown: "1, 9",
 };
 
-// Confidence-based radius: higher confidence = larger, more prominent dot
-function confidenceToRadius(confidence: number): number {
-  switch (confidence) {
-    case 3: return 6;   // High confidence – prominent
-    case 2: return 4.5; // Medium confidence
-    case 1: return 3.5; // Low confidence
-    default: return 2.5; // Unknown / 0
-  }
-}
+/** Every report dot is this size: the shape (see the legend), not the size, says how accurate it is. */
+const DOT_RADIUS = 5;
+const DOUBTFUL_SIZE = 14;
+const LATEST_SIZE = 22;
+/** A stay's duration label shows once its circle is at least this big on screen. */
+const STAY_LABEL_MIN_RADIUS_PX = 10;
+/** Stay labels closer than this on screen are combined into one. */
+const STAY_LABEL_MERGE_PX = { x: 90, y: 22 };
 
-// Confidence-based fill opacity boost (no chronological fading)
-function confidenceToOpacity(confidence: number): number {
-  switch (confidence) {
-    case 3: return 0.85; // High confidence – very solid
-    case 2: return 0.65; // Medium confidence
-    case 1: return 0.45; // Low confidence
-    default: return 0.25; // Very low confidence
-  }
-}
-
-// Confidence label helper
-function confidenceLabel(confidence: number): string {
-  switch (confidence) {
-    case 3: return "High";
-    case 2: return "Medium";
-    case 1: return "Low";
-    default: return "Very Low";
-  }
-}
-
-// Accuracy label helper – describes iPhone GPS quality
 const TRAIL_LANE_OFFSET_PX = 4;
 
 /** Shifts a line a few screen pixels to the right of its direction of travel (recomputed per zoom). */
@@ -78,69 +57,6 @@ function offsetRight(map: L.Map, path: L.LatLngTuple[], px: number): L.LatLngTup
     return [ll.lat, ll.lng] as L.LatLngTuple;
   });
 }
-
-function accuracyLabel(accuracy: number): string {
-  if (accuracy <= 10) return "Excellent";
-  if (accuracy <= 35) return "Good";
-  if (accuracy <= 65) return "Fair";
-  if (accuracy <= 100) return "Poor";
-  return "Very Poor";
-}
-
-// Adjusts device marker color and brightness/saturation based on chronological freshness (comet tail)
-function adjustColorForFreshness(hex: string, freshness: number, isDarkTheme: boolean): string {
-  let r = 0, g = 0, b = 0;
-  if (/^#?[0-9A-Fa-f]{6}$/.test(hex)) {
-    const clean = hex.replace("#", "");
-    r = parseInt(clean.substring(0, 2), 16);
-    g = parseInt(clean.substring(2, 4), 16);
-    b = parseInt(clean.substring(4, 6), 16);
-  } else if (/^#?[0-9A-Fa-f]{3}$/.test(hex)) {
-    const clean = hex.replace("#", "");
-    r = parseInt(clean[0] + clean[0], 16);
-    g = parseInt(clean[1] + clean[1], 16);
-    b = parseInt(clean[2] + clean[2], 16);
-  } else {
-    return hex;
-  }
-
-  r /= 255;
-  g /= 255;
-  b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-
-  h = Math.round(h * 360);
-  s = Math.round(s * 100);
-  l = Math.round(l * 100);
-
-  // Desaturate older points to make them look faded
-  const adjustedS = Math.round(s * (0.35 + freshness * 0.65));
-  
-  let adjustedL = l;
-  if (isDarkTheme) {
-    // Sinks into darkness (fade to dark)
-    adjustedL = Math.round(l * (0.35 + freshness * 0.65));
-  } else {
-    // Fades into light background (fade to white/light grey)
-    adjustedL = Math.round(l + (92 - l) * (0.65 * (1 - freshness)));
-  }
-
-  return `hsl(${h}, ${adjustedS}%, ${adjustedL}%)`;
-}
-
-
 
 // Light, dark and streets all use the OpenStreetMap tiles (sharp up to zoom 19), recoloured as each tile loads
 // (lib/filtered-tiles.ts): gray (light), gray and inverted (dark), or muted colours (streets).
@@ -166,8 +82,8 @@ interface LeafletMapProps {
   mapTheme: "system" | "light" | "dark" | "satellite" | "streets";
   onCopyLocation: (lat: number, lon: number) => void;
   isVisible: boolean;
-  /** Active Jev question's label per report key: sets the dot's shape (never hides a dot). */
-  jevLabels?: Map<string, JevLabel>;
+  /** Accuracy level of each report in filteredReports (same order): sets the dot's shape, never hides it. */
+  qualities?: ReportQuality[];
   /** Fly to a report and open its tooltip; nonce lets the same report be focused again. */
   focusRequest?: { key: string; nonce: number } | null;
   /** Collapse stays, route around spikes and curve the trail line (dots are unaffected). */
@@ -192,7 +108,7 @@ export default function LeafletMap({
   mapTheme,
   onCopyLocation,
   isVisible,
-  jevLabels,
+  qualities,
   focusRequest,
   simplifyTrail = true,
   animateTrail = true,
@@ -206,6 +122,10 @@ export default function LeafletMap({
   const arrowLayerRef = useRef<L.LayerGroup | null>(null);
   const arrowPathsRef = useRef<L.LatLngTuple[][]>([]);
   const drawArrowsRef = useRef<() => void>(() => {});
+  // Stay duration labels: shown only where a stay's circle is big enough on screen, so redrawn on zoom.
+  const stayLabelLayerRef = useRef<L.LayerGroup | null>(null);
+  const staysRef = useRef<Stay[]>([]);
+  const drawStayLabelsRef = useRef<() => void>(() => {});
   // Trail lines are also redrawn per zoom: in simplified mode each trip is offset a few pixels to the right of
   // travel ("keep right"), so a trip and its return along the same road show as two lanes.
   const trailLayerRef = useRef<L.LayerGroup | null>(null);
@@ -305,6 +225,13 @@ export default function LeafletMap({
     // SVG, not the default canvas: a canvas can't let hovers through to the dots under it.
     aiRendererRef.current = L.svg({ pane: "aiPath" });
     aiLayerRef.current = L.layerGroup().addTo(map);
+    // Stay labels above the dots, below markers and tooltips; never in the way of the mouse.
+    const stayLabelPane = map.createPane("stayLabels");
+    stayLabelPane.style.zIndex = "420";
+    stayLabelPane.style.pointerEvents = "none";
+    stayLabelLayerRef.current = L.layerGroup().addTo(map);
+    const redrawStayLabels = () => drawStayLabelsRef.current();
+    map.on("zoomend", redrawStayLabels);
     const redrawTrail = () => drawTrailRef.current();
     const redrawArrows = () => drawArrowsRef.current();
     map.on("zoomend", redrawTrail);
@@ -333,12 +260,14 @@ export default function LeafletMap({
       map.off("moveend", handleMoveEnd);
       map.off("zoomend", redrawTrail);
       map.off("moveend", redrawArrows);
+      map.off("zoomend", redrawStayLabels);
       map.remove();
       mapRef.current = null;
       layerGroupRef.current = null;
       arrowLayerRef.current = null;
       aiLayerRef.current = null;
       trailLayerRef.current = null;
+      stayLabelLayerRef.current = null;
     };
     // Only run on mount/unmount - we handle view changes via setView below
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,12 +367,10 @@ export default function LeafletMap({
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    // --- Compute latest-cluster: absorb nearby dots into the latest marker ---
-    // Set of report indices that are absorbed into the latest cluster
+    // --- Latest cluster: reports near the latest one merge into the latest marker ---
     const absorbedIndices = new Set<number>();
-    let bestClusterLoc: { lat: number; lon: number; accuracy: number; confidence: number } | null = null;
+    let bestIdx = -1;
     let latestReport: (typeof filteredReports)[number] | null = null;
-    let clusterCount = 0;
 
     const ticksHtml = Array.from({ length: 12 }).map((_, i) => {
       const angle = i * 30;
@@ -451,93 +378,107 @@ export default function LeafletMap({
       const width = isMain ? "2px" : "1px";
       const height = isMain ? (isMain && i % 6 === 0 ? "7px" : "5.5px") : "4px";
       const opacity = isMain ? "0.9" : "0.55";
-      const color = i === 0 
-        ? deviceColor 
+      const color = i === 0
+        ? deviceColor
         : (useDarkMarkers ? "rgba(255, 255, 255, 0.85)" : "rgba(0, 0, 0, 0.5)");
       return `<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(${angle}deg); pointer-events: none;">
         <div style="position: absolute; top: 3px; left: 50%; transform: translateX(-50%); width: ${width}; height: ${height}; background-color: ${color}; opacity: ${opacity}; border-radius: 0.5px;"></div>
       </div>`;
     }).join("");
 
+    /** Clock face showing when the report was seen, plus a line with its accuracy level (see the legend). */
+    const reportTooltip = (date: Date, quality: ReportQuality | undefined, extra = "") => {
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      const hourAngle = (hours % 12) * 30 + minutes * 0.5;
+      const minuteAngle = minutes * 6;
+      const day = date.getDate();
+      const monthStr = date.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
+      const qualityLine = quality
+        ? `<div class="map-tip map-tip-compact"><span class="map-tip-title">${QUALITY_LABEL[quality.level]}</span> · ${quality.why}${extra}</div>`
+        : "";
+      return `
+        <div class="map-tooltip-card watch-face" style="border-color: ${deviceColor}; box-shadow: 0 0 15px ${deviceColor}40, inset 0 0 10px ${deviceColor}20;">
+          ${ticksHtml}
+          <div class="watch-complication-year">${date.getFullYear()}</div>
+          <div class="watch-complication-ampm">${hours >= 12 ? "PM" : "AM"}</div>
+          <div class="watch-complication-date">${day} ${monthStr}</div>
+          <div class="watch-hand watch-hand-hour" style="transform: rotate(${hourAngle}deg); background-color: ${deviceColor};"></div>
+          <div class="watch-hand watch-hand-minute" style="transform: rotate(${minuteAngle}deg); background-color: ${useDarkMarkers ? "#ffffff" : "#000000"};"></div>
+          <div class="watch-pin" style="background-color: ${deviceColor};"></div>
+        </div>
+        ${qualityLine}
+      `;
+    };
+
     if (showHistory && filteredReports.length > 0) {
       latestReport = filteredReports[filteredReports.length - 1];
       const latestLoc = latestReport.decrypedPayload.location;
       const searchRadius = Math.max(latestLoc.accuracy, 30); // at least 30m radius
 
-      // Find all reports within the accuracy radius of the latest report
       filteredReports.forEach((report, idx) => {
         const loc = report.decrypedPayload.location;
-        const dist = haversineM(
-          latestLoc.latitude, latestLoc.longitude,
-          loc.latitude, loc.longitude
-        );
-        if (dist <= searchRadius) {
+        if (haversineM(latestLoc.latitude, latestLoc.longitude, loc.latitude, loc.longitude) <= searchRadius) {
           absorbedIndices.add(idx);
         }
       });
 
-      clusterCount = absorbedIndices.size;
-
-      // Among absorbed reports, pick the one with the best location:
-      // highest confidence first, then lowest accuracy (best GPS)
+      // The marker sits on the best of them: highest confidence first, then the smallest accuracy radius.
       let bestScore = -Infinity;
       for (const idx of absorbedIndices) {
-        const r = filteredReports[idx];
-        const loc = r.decrypedPayload.location;
-        const conf = r.decrypedPayload.confidence;
-        // Score: confidence is primary (x1000), accuracy inverse is secondary
-        const score = conf * 1000 + (255 - loc.accuracy);
+        const p = filteredReports[idx].decrypedPayload;
+        const score = p.confidence * 1000 + (255 - p.location.accuracy);
         if (score > bestScore) {
           bestScore = score;
-          bestClusterLoc = {
-            lat: loc.latitude,
-            lon: loc.longitude,
-            accuracy: loc.accuracy,
-            confidence: conf,
-          };
+          bestIdx = idx;
         }
       }
     }
+    const best = bestIdx >= 0 ? filteredReports[bestIdx].decrypedPayload.location : null;
 
     // Trail line. Order is always true seen-time order; "simplify" only changes how the line is routed
     // (stays collapsed, spikes routed around, curves). Every dot is still drawn below.
     // Same style on every map theme (lib/trail-style.ts).
     const trailPaths: L.LatLngTuple[][] = [];
+    const stays: Stay[] = [];
 
     if (showHistory && filteredReports.length > 1 && simplifyTrail) {
       const valid = filteredReports
-        .map((r) => r.decrypedPayload)
-        .filter((p) => !isNaN(p.location.latitude) && !isNaN(p.location.longitude));
+        .map((r, i) => ({ p: r.decrypedPayload, doubtful: qualities?.[i]?.level === "doubtful" }))
+        .filter(({ p }) => !isNaN(p.location.latitude) && !isNaN(p.location.longitude));
+      // The line skips doubtful reports (their marks stay) and doesn't end at a doubtful latest location.
+      const skip = new Set(valid.flatMap((v, k) => (v.doubtful ? [k] : [])));
+      const bestDoubtful = bestIdx >= 0 && qualities?.[bestIdx]?.level === "doubtful";
       const trail = buildTrail(
-        valid.map((p) => ({
+        valid.map(({ p }) => ({
           lat: p.location.latitude,
           lon: p.location.longitude,
           acc: p.location.accuracy,
           t: new Date(p.date).getTime(),
         })),
-        bestClusterLoc ? [bestClusterLoc.lat, bestClusterLoc.lon] : undefined,
+        best && !bestDoubtful ? [best.latitude, best.longitude] : undefined,
+        skip,
       );
 
-      // Stay areas: where the tag sat still, drawn in real metres under the dots.
+      // Stay areas: where the tag sat still, drawn in real metres under the dots; their duration is labelled
+      // on the map (drawStayLabels) and the tooltip gives the times.
       const fmtTime = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       for (const stay of trail.stays) {
-        const mins = Math.round((stay.end - stay.start) / 60000);
-        const duration = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
+        stays.push(stay);
         L.circle(stay.center, {
           radius: stay.radiusM,
           color: deviceColor,
           weight: 1.5,
-          opacity: 0.5,
+          opacity: 0.6,
           dashArray: "2, 5",
           fillColor: deviceColor,
-          fillOpacity: 0.05,
+          fillOpacity: 0.06,
           // Same pane (canvas) as the dots and added before them: hovering an empty part of the stay reaches it,
           // a dot on top still wins. In a lower pane the dots' full-map canvas swallowed every hover.
         })
           .bindTooltip(
-            `<div class="jev-tip"><div class="jev-tip-row jev-tip-active"><span class="jev-tip-q">Stayed</span> ${duration}</div>` +
-              `<div class="jev-tip-detail">${fmtTime(stay.start)} – ${fmtTime(stay.end)}<br/>${stay.indices.length} reports within ~${Math.round(stay.radiusM)} m of the centre (80% of them)</div>` +
-              `<div class="jev-tip-detail" style="margin-top:3px">A stay: reports in a row within 1.5× their accuracy (75–200 m) of each other, lasting 10+ min</div></div>`,
+            `<div class="map-tip"><div class="map-tip-title">Stayed ${formatDuration(stay.end - stay.start)}</div>` +
+              `<div class="map-tip-detail">${fmtTime(stay.start)} – ${fmtTime(stay.end)}<br/>${stay.indices.length} reports, most within ~${Math.round(stay.radiusM)} m</div></div>`,
             { direction: "top", opacity: 1, className: "custom-leaflet-tooltip", sticky: true },
           )
           .addTo(layerGroup);
@@ -552,13 +493,8 @@ export default function LeafletMap({
       // Raw trail: every report in order; absorbed dots snap to the cluster location.
       const latlngs: L.LatLngTuple[] = filteredReports
         .map((r, idx) => {
-          if (absorbedIndices.has(idx) && bestClusterLoc) {
-            return [bestClusterLoc.lat, bestClusterLoc.lon] as L.LatLngTuple;
-          }
-          return [
-            r.decrypedPayload.location.latitude,
-            r.decrypedPayload.location.longitude,
-          ] as L.LatLngTuple;
+          if (absorbedIndices.has(idx) && best) return [best.latitude, best.longitude] as L.LatLngTuple;
+          return [r.decrypedPayload.location.latitude, r.decrypedPayload.location.longitude] as L.LatLngTuple;
         })
         .filter((ll) => !isNaN(ll[0]) && !isNaN(ll[1]));
 
@@ -579,113 +515,74 @@ export default function LeafletMap({
       animate: animateTrail,
     };
     drawTrailRef.current();
+    staysRef.current = stays;
+    drawStayLabelsRef.current();
 
-    // Report markers — skip absorbed indices (they're part of the latest cluster)
+    // Report dots: all the same size and opacity in the device colour; only the shape says how accurate the
+    // report is (see the legend). Reports merged into the latest marker aren't drawn separately.
     if (showHistory && filteredReports.length > 0) {
-      const total = filteredReports.length;
       filteredReports.forEach((report, idx) => {
-        // Skip reports absorbed into the latest cluster
         if (absorbedIndices.has(idx)) return;
 
         const { decrypedPayload: payload } = report;
         const { location } = payload;
-        
-        // Guard against invalid coordinates
         if (isNaN(location.latitude) || isNaN(location.longitude)) return;
 
-        const confidence = payload.confidence;
-        const freshness = total > 1 ? idx / (total - 1) : 1;
-        const fillOpacity = confidenceToOpacity(confidence);
-        const radius = confidenceToRadius(confidence);
-
         const key = reportKey(report);
-        const jevLabel = jevLabels?.get(key);
-        const fillColor = adjustColorForFreshness(deviceColor, freshness, useDarkMarkers);
+        const quality = qualities?.[idx];
+        const level = quality?.level ?? "reliable";
+        const at: L.LatLngTuple = [location.latitude, location.longitude];
 
-        // Main dot – sized and opaque by confidence, color saturation/lightness adjusted by freshness.
-        // A Jev label other than "dot" swaps the circle for a shape in the same color, so device colors stay intact.
+        // Dots and rings are on the canvas (fast with thousands); the few doubtful ones are crosses (DOM).
         let marker: L.CircleMarker | L.Marker;
-        if (jevLabel && jevLabel.mark !== "dot") {
-          const size = Math.max(14, Math.round(radius * 2 + 6));
-          marker = L.marker([location.latitude, location.longitude], {
+        if (level === "doubtful") {
+          marker = L.marker(at, {
             icon: L.divIcon({
-              className: "jev-mark",
-              html: markSvg(jevLabel.mark, fillColor, DOT_OUTLINE, size),
-              iconSize: [size, size],
-              iconAnchor: [size / 2, size / 2],
+              className: "quality-mark",
+              html: qualitySvg("doubtful", deviceColor, DOUBTFUL_SIZE, DOT_OUTLINE),
+              iconSize: [DOUBTFUL_SIZE, DOUBTFUL_SIZE],
+              iconAnchor: [DOUBTFUL_SIZE / 2, DOUBTFUL_SIZE / 2],
             }),
-            opacity: Math.max(0.55, fillOpacity),
             keyboard: false,
           });
+        } else if (level === "approximate") {
+          marker = L.circleMarker(at, {
+            radius: DOT_RADIUS,
+            color: deviceColor,
+            weight: 2.5,
+            fillColor: DOT_OUTLINE,
+            fillOpacity: 0.85,
+          });
         } else {
-          marker = L.circleMarker(
-            [location.latitude, location.longitude],
-            {
-              color: DOT_OUTLINE,
-              weight: DOT_OUTLINE_WEIGHT,
-              fillColor,
-              fillOpacity,
-              radius,
-            }
-          );
+          marker = L.circleMarker(at, {
+            radius: DOT_RADIUS,
+            color: DOT_OUTLINE,
+            weight: DOT_OUTLINE_WEIGHT,
+            fillColor: deviceColor,
+            fillOpacity: 0.9,
+          });
         }
         markersByKeyRef.current.set(key, marker);
 
-        // Confidence badge color
-        const confBadgeColor = confidence === 3 ? "#22c55e" : confidence === 2 ? "#eab308" : confidence === 1 ? "#f97316" : "#ef4444";
-
-        const date = payload.date;
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
-        const hourAngle = (hours % 12) * 30 + minutes * 0.5;
-        const minuteAngle = minutes * 6;
-        const day = date.getDate();
-        const monthStr = date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
-        const year = date.getFullYear();
-        const confLabel = confidence === 3 ? "HI" : confidence === 2 ? "MED" : "LO";
-
         // Built only when the tooltip opens, not upfront for every dot.
-        const tooltipContent = () => `
-          <div class="map-tooltip-card watch-face" style="border-color: ${deviceColor}; box-shadow: 0 0 15px ${deviceColor}40, inset 0 0 10px ${deviceColor}20;">
-            <!-- Ticks -->
-            ${ticksHtml}
-
-            <!-- Complications -->
-            <div class="watch-complication-year">${year}</div>
-            <div class="watch-complication-ampm">${hours >= 12 ? 'PM' : 'AM'}</div>
-            <div class="watch-complication-logo">${confLabel}</div>
-            <div class="watch-complication-date">${day} ${monthStr}</div>
-
-            <!-- Hands -->
-            <div class="watch-hand watch-hand-hour" style="transform: rotate(${hourAngle}deg); background-color: ${deviceColor};"></div>
-            <div class="watch-hand watch-hand-minute" style="transform: rotate(${minuteAngle}deg); background-color: ${useDarkMarkers ? "#ffffff" : "#000000"};"></div>
-
-            <!-- Pin -->
-            <div class="watch-pin" style="background-color: ${deviceColor};"></div>
-          </div>
-        `;
-
-        marker.bindTooltip(tooltipContent, {
+        marker.bindTooltip(() => reportTooltip(payload.date, quality), {
           direction: "top",
           opacity: 1,
           className: "custom-leaflet-tooltip",
           offset: [0, -10],
         });
 
-        // Dynamic hover range coverage circle
+        // While hovered, the report's accuracy radius in real metres.
         let hoverCircle: L.Circle | null = null;
         marker.on("tooltipopen", () => {
           if (location.accuracy > 0) {
-            // Encode time/recency in the opacity of the range circle
-            const opacity = 0.1 + freshness * 0.25; // 0.1 (oldest) to 0.35 (newest)
-            const fillOpacity = 0.02 + freshness * 0.06; // 0.02 (oldest) to 0.08 (newest)
-            hoverCircle = L.circle([location.latitude, location.longitude], {
+            hoverCircle = L.circle(at, {
               radius: location.accuracy,
               color: deviceColor,
               weight: 1.5,
-              opacity: opacity,
+              opacity: 0.3,
               fillColor: deviceColor,
-              fillOpacity: fillOpacity,
+              fillOpacity: 0.06,
               dashArray: location.accuracy > 65 ? "6, 8" : undefined,
               interactive: false,
             });
@@ -693,7 +590,6 @@ export default function LeafletMap({
             hoverCircle.bringToBack();
           }
         });
-
         marker.on("tooltipclose", () => {
           if (hoverCircle) {
             layerGroup.removeLayer(hoverCircle);
@@ -705,13 +601,13 @@ export default function LeafletMap({
       });
     }
 
-    // Main Location Marker — positioned at the best location in the cluster
+    // Latest location marker — at the best report of the latest cluster, in that report's shape.
     let mainLocation: [number, number] | undefined;
     let displayAccuracy = 100;
 
-    if (showHistory && bestClusterLoc) {
-      mainLocation = [bestClusterLoc.lat, bestClusterLoc.lon];
-      displayAccuracy = bestClusterLoc.accuracy;
+    if (showHistory && best) {
+      mainLocation = [best.latitude, best.longitude];
+      displayAccuracy = best.accuracy;
     } else if (guessedLocation && !showHistory) {
       mainLocation = guessedLocation;
     }
@@ -731,87 +627,28 @@ export default function LeafletMap({
         }).addTo(layerGroup);
       }
 
-      // A Jev label on the latest report shows as its mark shape here too, like on the report dots.
-      const latestMark = showHistory && latestReport ? jevLabels?.get(reportKey(latestReport))?.mark : undefined;
+      const bestQuality = bestIdx >= 0 ? qualities?.[bestIdx] : undefined;
+      const latestLevel = bestQuality?.level ?? "reliable";
       const centre =
-        latestMark && latestMark !== "dot"
-          ? `<div style="position: relative; z-index: 2; width: 100%; height: 100%; filter: drop-shadow(0 0 6px ${deviceColor});">${markSvg(latestMark, deviceColor, "#ffffff", 22)}</div>`
-          : `<div style="
-            position: relative;
-            width: 100%;
-            height: 100%;
-            background-color: ${deviceColor};
-            border: 2px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 12px ${deviceColor};
-            z-index: 2;
-          "></div>`;
-      const markSize = latestMark && latestMark !== "dot" ? 22 : 20;
+        latestLevel === "reliable"
+          ? `<div style="position: relative; width: 100%; height: 100%; background-color: ${deviceColor}; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 12px ${deviceColor}; z-index: 2;"></div>`
+          : `<div style="position: relative; z-index: 2; width: 100%; height: 100%; filter: drop-shadow(0 0 6px ${deviceColor});">${qualitySvg(latestLevel, deviceColor, LATEST_SIZE)}</div>`;
       const icon = L.divIcon({
         className: "custom-location-marker",
         html: `<div style="position: relative; width: 100%; height: 100%;">
-          <div style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            background-color: ${deviceColor};
-            opacity: 0.6;
-            animation: map-pulse 2s infinite;
-          "></div>
+          <div style="position: absolute; inset: 0; border-radius: 50%; background-color: ${deviceColor}; opacity: 0.6; animation: map-pulse 2s infinite;"></div>
           ${centre}
         </div>`,
-        iconSize: [markSize, markSize],
-        iconAnchor: [markSize / 2, markSize / 2],
+        iconSize: [LATEST_SIZE, LATEST_SIZE],
+        iconAnchor: [LATEST_SIZE / 2, LATEST_SIZE / 2],
       });
 
       const marker = L.marker(mainLocation, { icon });
 
-      // Tooltip — uses latest report's time, but best location's coordinates
-      if (latestReport && bestClusterLoc) {
-        const payload = latestReport.decrypedPayload;
-        const conf = bestClusterLoc.confidence;
-        const confBadgeColor = conf === 3 ? "#22c55e" : conf === 2 ? "#eab308" : conf === 1 ? "#f97316" : "#ef4444";
-        const clusterInfo = clusterCount > 1
-          ? `<div class="map-tooltip-divider"></div>
-             <div style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground));padding:2px 0;">
-               Combined from ${clusterCount} nearby reports
-             </div>`
-          : "";
-
-        const date = payload.date;
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
-        const hourAngle = (hours % 12) * 30 + minutes * 0.5;
-        const minuteAngle = minutes * 6;
-        const day = date.getDate();
-        const monthStr = date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
-        const year = date.getFullYear();
-        const confLabel = conf === 3 ? "HI" : conf === 2 ? "MED" : "LO";
-
-        const latestTooltip = `
-          <div class="map-tooltip-card watch-face" style="border-color: ${deviceColor}; box-shadow: 0 0 15px ${deviceColor}40, inset 0 0 10px ${deviceColor}20;">
-            <!-- Ticks -->
-            ${ticksHtml}
-
-            <!-- Complications -->
-            <div class="watch-complication-year">${year}</div>
-            <div class="watch-complication-ampm">${hours >= 12 ? 'PM' : 'AM'}</div>
-            <div class="watch-complication-logo">${confLabel}</div>
-            <div class="watch-complication-date">${day} ${monthStr}</div>
-
-            <!-- Hands -->
-            <div class="watch-hand watch-hand-hour" style="transform: rotate(${hourAngle}deg); background-color: ${deviceColor};"></div>
-            <div class="watch-hand watch-hand-minute" style="transform: rotate(${minuteAngle}deg); background-color: ${useDarkMarkers ? "#ffffff" : "#000000"};"></div>
-
-            <!-- Pin -->
-            <div class="watch-pin" style="background-color: ${deviceColor};"></div>
-          </div>
-        `;
-
-        marker.bindTooltip(latestTooltip, {
+      // Tooltip — the latest report's time, the best report's accuracy level.
+      if (latestReport && bestIdx >= 0) {
+        const merged = absorbedIndices.size > 1 ? `<br/>Combined from ${absorbedIndices.size} nearby reports` : "";
+        marker.bindTooltip(reportTooltip(latestReport.decrypedPayload.date, bestQuality, merged), {
           direction: "top",
           opacity: 1,
           className: "custom-leaflet-tooltip",
@@ -835,11 +672,48 @@ export default function LeafletMap({
     showDirectionArrows,
     useDarkMarkers,
     onCopyLocation,
-    jevLabels,
-      simplifyTrail,
+    qualities,
+    simplifyTrail,
     activeTheme,
     animateTrail,
   ]);
+
+  // Each stay gets a label with how long it lasted, above its circle, once the circle is big enough on screen to
+  // tell which stay it belongs to (redrawn on zoom). Stays whose labels would overlap (the same place visited
+  // again, or places close together at this zoom) share one label.
+  drawStayLabelsRef.current = () => {
+    const map = mapRef.current;
+    const layer = stayLabelLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    if (!showHistory) return;
+    const groups: { top: L.LatLng; px: L.Point; stays: Stay[] }[] = [];
+    for (const stay of staysRef.current) {
+      const top = L.latLng(stay.center[0] + stay.radiusM / 111_320, stay.center[1]);
+      const px = map.latLngToLayerPoint(top);
+      if (px.distanceTo(map.latLngToLayerPoint(L.latLng(stay.center))) < STAY_LABEL_MIN_RADIUS_PX) continue;
+      const near = groups.find((g) => Math.abs(g.px.x - px.x) < STAY_LABEL_MERGE_PX.x && Math.abs(g.px.y - px.y) < STAY_LABEL_MERGE_PX.y);
+      if (near) near.stays.push(stay);
+      else groups.push({ top, px, stays: [stay] });
+    }
+    for (const g of groups) {
+      const durations = g.stays.map((st) => st.end - st.start);
+      const text =
+        durations.length <= 2
+          ? durations.map(formatDuration).join(" · ")
+          : `${durations.length} stays · ${formatDuration(durations.reduce((a, b) => a + b, 0))}`;
+      L.marker(g.top, {
+        interactive: false,
+        keyboard: false,
+        pane: "stayLabels",
+        icon: L.divIcon({
+          className: "stay-label-marker",
+          html: `<span class="stay-label" style="border-color: ${deviceColor};">${text}</span>`,
+          iconSize: [0, 0],
+        }),
+      }).addTo(layer);
+    }
+  };
 
   drawTrailRef.current = () => {
     const map = mapRef.current;
@@ -938,7 +812,7 @@ export default function LeafletMap({
         dashArray: MODE_DASH[leg.mode],
         lineCap: "round",
       })
-        .bindTooltip(`<div class="jev-tip"><div class="jev-tip-row jev-tip-active">${aiPath.title.replace(/</g, "&lt;")}</div><div class="jev-tip-detail">${leg.label.replace(/</g, "&lt;")}</div></div>`, {
+        .bindTooltip(`<div class="map-tip"><div class="map-tip-title">${aiPath.title.replace(/</g, "&lt;")}</div><div class="map-tip-detail">${leg.label.replace(/</g, "&lt;")}</div></div>`, {
           sticky: true,
           opacity: 1,
           className: "custom-leaflet-tooltip",
@@ -949,7 +823,7 @@ export default function LeafletMap({
     if (all.length > 1) map.flyToBounds(L.latLngBounds(all), { padding: [60, 60], duration: 0.6, maxZoom: 17 });
   }, [aiPath, deviceColor]);
 
-  // Fly to a report picked in the Jev panel and open its tooltip.
+  // Fly to a report picked in the location list and open its tooltip.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusRequest) return;
@@ -957,7 +831,15 @@ export default function LeafletMap({
     if (!layer) return;
     const target = layer.getLatLng();
     map.flyTo(target, Math.max(map.getZoom(), 16), { duration: 0.6 });
-    map.once("moveend", () => layer.openTooltip());
+    map.once("moveend", () => {
+      layer.openTooltip();
+      // Opened without a hover, so no mouse-out will close it: the next click or move on the map does.
+      const close = () => {
+        layer.closeTooltip();
+        map.off("click movestart", close);
+      };
+      map.on("click movestart", close);
+    });
   }, [focusRequest]);
 
 
@@ -1125,32 +1007,6 @@ export default function LeafletMap({
           box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
         }
 
-        .watch-complication-logo {
-          position: absolute;
-          right: 14px;
-          top: 50%;
-          transform: translateY(-50%);
-          font-family: var(--font-mono, monospace);
-          font-size: 7px;
-          font-weight: 700;
-          line-height: 1;
-          color: ${useDarkMarkers ? "rgba(255, 255, 255, 0.6)" : "rgba(0, 0, 0, 0.5)"};
-          background: ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "rgba(0, 0, 0, 0.03)"
-              : "rgba(255, 255, 255, 0.08)"
-          };
-          border: 0.5px solid ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "rgba(0, 0, 0, 0.12)"
-              : "rgba(255, 255, 255, 0.2)"
-          };
-          padding: 2px 3px;
-          border-radius: 2.5px;
-          letter-spacing: 0.5px;
-          box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
-        }
-
         .watch-complication-date {
           position: absolute;
           bottom: 16px;
@@ -1202,13 +1058,35 @@ export default function LeafletMap({
           z-index: 11;
         }
 
-        /* Jev labels */
-        .leaflet-div-icon.jev-mark {
+        /* Accuracy shapes drawn as markers (doubtful crosses) */
+        .leaflet-div-icon.quality-mark {
           background: transparent;
           border: none;
         }
-        .jev-mark svg { display: block; }
-        .jev-tip {
+        .quality-mark svg { display: block; }
+        /* Stay duration labels, centred just above each stay's circle */
+        .leaflet-div-icon.stay-label-marker {
+          background: transparent;
+          border: none;
+        }
+        .stay-label {
+          position: absolute;
+          left: 0;
+          bottom: 2px;
+          transform: translateX(-50%);
+          white-space: nowrap;
+          padding: 1px 6px;
+          border-radius: 9999px;
+          border: 1.5px solid;
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 16px;
+          color: hsl(var(--card-foreground));
+          background-color: hsl(var(--card));
+          box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+        }
+        /* Small text tooltips (stays, the AI path, the accuracy line under a report's clock face) */
+        .map-tip {
           margin: 6px auto 0;
           width: 190px;
           max-width: 70vw;
@@ -1217,21 +1095,13 @@ export default function LeafletMap({
           font-size: 11px;
           line-height: 1.3;
           white-space: normal;
-          color: ${useDarkMarkers ? "#ffffff" : "#000000"};
-          background-color: ${
-            activeTheme === "light" || activeTheme === "streets"
-              ? "rgba(255, 255, 255, 0.92)"
-              : "rgba(15, 15, 15, 0.92)"
-          };
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(128, 128, 128, 0.3);
+          color: hsl(var(--card-foreground));
+          background-color: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
         }
-        .jev-tip-row + .jev-tip-row { margin-top: 4px; }
-        .jev-tip-q { font-weight: 600; opacity: 0.7; }
-        .jev-tip-active .jev-tip-q { opacity: 1; }
-        .jev-tip-active { font-weight: 600; }
-        .jev-tip-detail { font-weight: 400; opacity: 0.65; font-size: 10px; }
+        .map-tip-compact { width: auto; max-width: 220px; text-align: center; }
+        .map-tip-title { font-weight: 600; }
+        .map-tip-detail { opacity: 0.7; font-size: 10px; }
 
         /* Center Pin */
         .watch-pin {

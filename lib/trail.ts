@@ -118,8 +118,8 @@ function spline(points: LatLon[]): LatLon[] {
   return out;
 }
 
-/** Out-and-back check, accuracy-aware (same rule as the Jev features). */
-function findSpikes(pts: TrailInput[]): Set<number> {
+/** Out-and-back check, accuracy-aware: the report jumps away and the next one comes straight back. */
+export function findSpikes(pts: TrailInput[]): Set<number> {
   const spikes = new Set<number>();
   for (let i = 1; i < pts.length - 1; i++) {
     const p = pts[i];
@@ -194,8 +194,9 @@ type Node = { pos: LatLon; stay: Stay | null };
 /**
  * @param pts reports in seen-time order
  * @param endAt optional position for the final node (the map's "best location" marker)
+ * @param skip indices the line doesn't go through (on top of the spikes it finds itself), e.g. doubtful reports
  */
-export function buildTrail(pts: TrailInput[], endAt?: LatLon): Trail {
+export function buildTrail(pts: TrailInput[], endAt?: LatLon, skip?: Set<number>): Trail {
   const empty: Trail = { paths: [], spikeStubs: [], stays: [], spikeIndices: new Set() };
   if (pts.length === 0) return empty;
 
@@ -209,7 +210,7 @@ export function buildTrail(pts: TrailInput[], endAt?: LatLon): Trail {
   let sumLat = 0;
   let sumLon = 0;
   for (let i = 0; i < pts.length; i++) {
-    if (spikeIndices.has(i)) continue;
+    if (spikeIndices.has(i) || skip?.has(i)) continue;
     const p = pts[i];
     const joinR = Math.min(STAY_MAX_JOIN_M, Math.max(STAY_MIN_JOIN_M, p.acc * STAY_JOIN_ACCURACY_FACTOR));
     if (cur.length) {

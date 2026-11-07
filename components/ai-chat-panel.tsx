@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Send, Square, Trash2, Wrench, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatUsd } from "@/lib/jev";
+import { formatUsd } from "@/lib/format";
 import { CHAT_MODELS } from "@/lib/ai-chat-models";
 import type { AiPath } from "@/lib/ai-tools";
 import type { AiChatConfig } from "@/lib/use-ai-chat-config";
@@ -91,7 +91,7 @@ export function AiChatBody({ session, config, hasKey, exampleDevice, aiPath, onD
         {shown.length === 0 && (
           <div className="flex flex-col gap-2 py-2">
             <p className="text-xs text-muted-foreground">
-              The AI reads your decrypted reports and Jev labels through tools in this browser, and can draw a path on
+              The AI reads your decrypted reports through tools in this browser, and can draw a path on
               the map. It sends report coordinates to the model provider, with zero data retention.
             </p>
             <div className="flex flex-wrap gap-2">

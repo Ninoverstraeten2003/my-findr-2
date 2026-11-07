@@ -2,6 +2,7 @@
 // their results. Paths are always built from real reports (optionally following roads), never invented.
 
 import { buildTrail } from "./trail";
+import { classifyReports } from "./report-quality";
 import type { Device, DeviceReport } from "./types";
 
 export type TravelMode = "car" | "bike" | "foot" | "train" | "unknown";
@@ -23,8 +24,6 @@ export interface ToolContext {
   /** Reports of a device seen between from and to, decrypted and sorted by seen time. */
   loadReports: (device: Device, from: Date, to: Date) => Promise<DeviceReport[]>;
   drawPath: (path: AiPath | null) => void;
-  /** Jev labels for reports in a range; with runMissing, asks Jev for unlabelled ones (within the Jev limits). */
-  getLabels: (device: Device, from: Date, to: Date, runMissing: boolean) => Promise<unknown>;
 }
 
 // ── Schemas (OpenAI-style function tools, as OpenRouter expects) ──────────────────────────────
@@ -78,7 +77,7 @@ export const TOOL_SCHEMAS = [
     function: {
       name: "get_reports",
       description:
-        "Raw location reports of a device in a time range: time, lat, lon, accuracy (m), Apple confidence (1-3). If the range has more than max_rows reports, the rows are evenly spaced over them and always include the first and the last report of the range; first_in_range / last_in_range give those times too.",
+        "Raw location reports of a device in a time range: time, lat, lon, accuracy (m), Apple confidence (1-3) and quality (reliable / approximate / doubtful, the same levels the map shows). If the range has more than max_rows reports, the rows are evenly spaced over them and always include the first and the last report of the range; first_in_range / last_in_range give those times too.",
       parameters: {
         type: "object",
         properties: {
@@ -86,25 +85,6 @@ export const TOOL_SCHEMAS = [
           from: timeParam("Start"),
           to: timeParam("End"),
           max_rows: { type: "integer", description: "Default 150, at most 400" },
-        },
-        required: ["device", "from", "to"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_labels",
-      description:
-        "Jev classifier labels per report (e.g. Consistency score 0-3 where 0 = likely glitch, Movement), with counts per answer. Set run_missing to have Jev label reports that aren't labelled yet; this costs a little and is skipped if over the user's limits. Labels are hints: check them against the reports.",
-      parameters: {
-        type: "object",
-        properties: {
-          device: { type: "string" },
-          from: timeParam("Start"),
-          to: timeParam("End"),
-          run_missing: { type: "boolean" },
         },
         required: ["device", "from", "to"],
         additionalProperties: false,
@@ -512,9 +492,13 @@ export async function runTool(
       const to = parseTime(args.to, true);
       const reports = await ctx.loadReports(device, from, to);
       const max = Math.min(400, Math.max(10, Number(args.max_rows) || 150));
-      const rows = sampleEvenly(reports, max).map((r) => {
+      // Classified over every report in the range (it looks at neighbours), then sampled.
+      const quality = classifyReports(
+        reports.map((r) => ({ lat: pos(r)[0], lon: pos(r)[1], acc: r.decrypedPayload.location.accuracy, t: time(r).getTime(), confidence: r.decrypedPayload.confidence })),
+      );
+      const rows = sampleEvenly(reports.map((r, i) => ({ r, q: quality[i] })), max).map(({ r, q }) => {
         const p = r.decrypedPayload;
-        return `${formatLocal(time(r))},${r5(p.location.latitude)},${r5(p.location.longitude)},${p.location.accuracy},${p.confidence}`;
+        return `${formatLocal(time(r))},${r5(p.location.latitude)},${r5(p.location.longitude)},${p.location.accuracy},${p.confidence},${q.level}`;
       });
       const sampled = rows.length < reports.length;
       return {
@@ -526,7 +510,7 @@ export async function runTool(
             ? { first_in_range: formatLocal(time(reports[0])), last_in_range: formatLocal(time(reports[reports.length - 1])) }
             : {}),
           rows_are: sampled ? "evenly spaced, including the first and last report of the range" : "every report in the range",
-          columns: "time,lat,lon,accuracy_m,confidence",
+          columns: "time,lat,lon,accuracy_m,confidence,quality",
           rows: rows.join("\n"),
         },
         // Say how many rows the model actually got, not only how many exist.
@@ -619,20 +603,6 @@ export async function runTool(
         },
         summary: `Summarised ${device.name}: ${stays.length} stays, ${trips.length} trips`,
       };
-    }
-
-    case "get_labels": {
-      const device = findDevice(ctx, args.device);
-      const result = await ctx.getLabels(device, parseTime(args.from), parseTime(args.to, true), !!args.run_missing);
-      const r = result as { labelled?: number; run?: { reports_asked?: number; skipped?: string }; error?: string };
-      const summary = r.error
-        ? `Labels unavailable: ${r.error}`
-        : r.run?.skipped
-          ? `Read Jev labels (labelling skipped: ${r.run.skipped})`
-          : r.run?.reports_asked
-            ? `Ran Jev on ${r.run.reports_asked} reports and read the labels`
-            : `Read Jev labels of ${device.name} (${r.labelled ?? 0} labelled)`;
-      return { result, summary };
     }
 
     case "place_name": {

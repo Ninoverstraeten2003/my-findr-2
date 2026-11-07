@@ -1,7 +1,8 @@
-// Server-only: decides which OpenRouter key pays for a request (shared by /api/jev and /api/chat).
+// Server-only: decides which OpenRouter key pays for an AI chat request.
 //  - A user's own key (x-openrouter-key header) is used as-is for that request, never stored or logged.
-//  - Otherwise the owner's OPENROUTER_API_KEY, only when x-jev-token matches JEV_ACCESS_TOKEN
-//    (required in production), with a per-instance daily cap.
+//  - Otherwise the owner's OPENROUTER_API_KEY, only when x-owner-token matches the owner access token
+//    (OWNER_ACCESS_TOKEN, or JEV_ACCESS_TOKEN from before Jev was removed; required in production), with a
+//    per-instance daily cap.
 
 // OpenRouter keys look like sk-or-v1-<hex>; the check only rejects obvious junk before calling upstream.
 const USER_KEY_RE = /^sk-or-[A-Za-z0-9_-]{10,200}$/;
@@ -18,11 +19,11 @@ export function resolveOpenRouterKey(request: Request): KeyResolution {
   }
   const serverKey = process.env.OPENROUTER_API_KEY;
   if (!serverKey) return { status: 401, error: "Add your own OpenRouter key in Settings (this server has no shared key)" };
-  const requiredToken = process.env.JEV_ACCESS_TOKEN;
+  const requiredToken = process.env.OWNER_ACCESS_TOKEN || process.env.JEV_ACCESS_TOKEN;
   if (!requiredToken && process.env.NODE_ENV === "production") {
     return { status: 401, error: "Add your own OpenRouter key in Settings (the shared key is disabled on this server)" };
   }
-  if (requiredToken && request.headers.get("x-jev-token") !== requiredToken) {
+  if (requiredToken && request.headers.get("x-owner-token") !== requiredToken) {
     return { status: 401, error: "Add your own OpenRouter key in Settings, or the site owner's access token" };
   }
   return { apiKey: serverKey, usingOwnKey: false };

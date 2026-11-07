@@ -27,7 +27,7 @@ export function spikeStubStyle(color: string): L.PolylineOptions {
   return { color, dashArray: "1, 6", weight: 1.5, opacity: 0.6, interactive: false, pane: "trail" };
 }
 
-/** Outline of report dots and Jev mark shapes. */
+/** Outline of report dots and accuracy shapes. */
 export const DOT_OUTLINE = "rgba(255,255,255,0.95)";
 export const DOT_OUTLINE_WEIGHT = 1.5;
 

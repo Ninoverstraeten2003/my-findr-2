@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CHAT_MODELS } from "@/lib/ai-chat-models";
-import { formatUsd } from "@/lib/jev";
+import { formatUsd } from "@/lib/format";
 import { useAiChatConfig } from "@/lib/use-ai-chat-config";
 
 const OTHER = "__other__";

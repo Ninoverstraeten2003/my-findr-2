@@ -1,7 +1,7 @@
 // Proxy for the AI chat: forwards one chat-completions step to OpenRouter. The tools themselves run in the
 // browser (only it can decrypt reports), so this route only sees the conversation and adds the key.
 //  - Zero data retention is forced on every request.
-//  - Same key rules as /api/jev: the user's own key, or the owner's key behind the access token.
+//  - The user's own key, or the owner's key behind the access token (lib/server/openrouter-auth.ts).
 //  - With the shared key only the cheap, tested models are allowed; a daily cap backs that up.
 // Request bodies are never logged.
 

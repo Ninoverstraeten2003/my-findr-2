@@ -12,15 +12,14 @@ import DevicesPanel from "@/components/devices-panel";
 import LocationCard from "@/components/location-card";
 import { Button } from "@/components/ui/button";
 import TimelineControl from "@/components/timeline-control";
-import AiPanel, { type AiTab } from "@/components/ai-panel";
+import AiPanel from "@/components/ai-panel";
+import MapLegend from "@/components/map-legend";
 import { useAiChatSession } from "@/lib/use-ai-chat-session";
-import { getLabelsForTool } from "@/lib/jev-tool";
-import { jevAuthHeaders } from "@/lib/jev-runner";
+import { openRouterAuthHeaders, useOpenRouterConfig } from "@/lib/use-openrouter-config";
+import { classifyReports } from "@/lib/report-quality";
 import { useAiChatConfig } from "@/lib/use-ai-chat-config";
 import { createReportLoader } from "@/lib/report-loader";
 import type { AiPath } from "@/lib/ai-tools";
-import { useJevConfig } from "@/lib/use-jev-config";
-import { useJevLabels } from "@/lib/use-jev-labels";
 import { Download, Copy, Settings, Loader2, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Device, ReportPeriod } from "@/lib/types";
@@ -265,21 +264,19 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
 
   const deviceColor = currentDevice?.hexColor || "#0ea5e9";
 
-  // Jev labels: shapes and tooltip notes on the dots in view (never removes a dot).
-  const [jevConfig, updateJevConfig] = useJevConfig();
-  const addJevSpend = useCallback(
-    (usd: number) => updateJevConfig((c) => ({ ...c, spentUsd: c.spentUsd + usd })),
-    [updateJevConfig],
-  );
-  const jev = useJevLabels(
-    jevConfig.enabled ? filteredReports : EMPTY_REPORTS,
-    jevConfig,
-    addJevSpend,
-    currentDevice?.id,
-  );
-  const jevLabels = useMemo(
-    () => jev.labelsFor(jevConfig.activeQuestionId),
-    [jev.labelsFor, jevConfig.activeQuestionId],
+  // Accuracy level of every report on the map (sets its shape; see the legend). Same order as filteredReports.
+  const qualities = useMemo(
+    () =>
+      classifyReports(
+        filteredReports.map((r) => ({
+          lat: r.decrypedPayload.location.latitude,
+          lon: r.decrypedPayload.location.longitude,
+          acc: r.decrypedPayload.location.accuracy,
+          t: new Date(r.decrypedPayload.date).getTime(),
+          confidence: r.decrypedPayload.confidence,
+        })),
+      ),
+    [filteredReports],
   );
   const [focusRequest, setFocusRequest] = useState<{ key: string; nonce: number } | null>(null);
 
@@ -291,17 +288,17 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
     (usd: number) => updateAiConfig((c) => ({ ...c, spentUsd: c.spentUsd + usd })),
     [updateAiConfig],
   );
-  // Same OpenRouter key rules as Jev: the user's own key, else the owner token (dev servers need neither).
+  // The user's own OpenRouter key, else the owner token (dev servers need neither).
+  const [openRouter] = useOpenRouterConfig();
   const aiHasKey =
-    !!jevConfig.userApiKey.trim() || !!jevConfig.accessToken || process.env.NODE_ENV !== "production";
+    !!openRouter.userApiKey.trim() || !!openRouter.accessToken || process.env.NODE_ENV !== "production";
 
-  // One AI sheet (Ask + Labels). The chat session lives here so closing the sheet keeps the conversation.
+  // The chat session lives here so closing the sheet keeps the conversation.
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiTab, setAiTab] = useState<AiTab>("ask");
   const chatSession = useAiChatSession({
     model: aiConfig.model,
     budgetUsd: aiConfig.maxCostPerChatUsd,
-    authHeaders: jevAuthHeaders(jevConfig),
+    authHeaders: openRouterAuthHeaders(openRouter),
     onSpend: addAiSpend,
     ctx: {
       devices: settings.devices,
@@ -310,8 +307,6 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         setAiPath(p);
         if (p) setAiOpen(false); // show the map
       },
-      getLabels: async (device, from, to, runMissing) =>
-        getLabelsForTool(await loadReportsForAi(device, from, to), jevConfig, runMissing, addJevSpend),
     },
   });
 
@@ -376,7 +371,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
           isVisible={isVisible}
           isLoading={isLoading}
           aiPath={aiPath}
-          jevLabels={jevConfig.enabled ? jevLabels : undefined}
+          qualities={qualities}
           focusRequest={focusRequest}
           onCopyLocation={(lat, lon) => {
             const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
@@ -396,19 +391,17 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
         onPeriodChange={onPeriodChange}
       />
 
-      {/* AI: chat (Ask) and Jev labels (Labels) in one sheet */}
+      {/* Legend, under the zoom buttons */}
+      {showHistory && filteredReports.length > 0 && (
+        <div className="absolute left-[10px] top-[84px] z-[1000]">
+          <MapLegend color={deviceColor} />
+        </div>
+      )}
+
+      {/* AI chat */}
       <AiPanel
         open={aiOpen}
         onOpenChange={setAiOpen}
-        tab={aiTab}
-        onTabChange={setAiTab}
-        jevConfig={jevConfig}
-        jev={jev}
-        reports={filteredReports}
-        deviceName={currentDevice?.name}
-        deviceColor={deviceColor}
-        onSelectQuestion={(id) => updateJevConfig((c) => ({ ...c, activeQuestionId: id }))}
-        onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
         chatConfig={aiConfig}
         session={chatSession}
         hasKey={aiHasKey}
@@ -465,7 +458,7 @@ export default function MapView({ onOpenSettings, isVisible }: MapViewProps) {
             lon={displayLocation.lon}
             deviceColor={deviceColor}
             reports={showHistory ? filteredReports : []}
-            labels={jevConfig.enabled ? jevLabels : undefined}
+            qualities={showHistory ? qualities : undefined}
             onFocusReport={(key) => setFocusRequest({ key, nonce: Date.now() })}
           />
         </div>

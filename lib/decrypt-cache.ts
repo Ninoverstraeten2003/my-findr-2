@@ -3,7 +3,7 @@
 // only return a report that actually decrypted with the key asking for it. Decrypted locations stay in this browser only,
 // like the private keys in settings. Every call fails soft: no IndexedDB (private mode etc.) = no cache.
 
-import { hashString } from "./jev";
+import { hashString } from "./hash";
 import type { BatteryStatus, DecryptedPayload } from "./types";
 
 /** Short, non-reversible tag for a private key, so entries are scoped per key without storing the key. */

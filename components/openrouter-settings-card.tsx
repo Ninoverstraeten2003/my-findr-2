@@ -4,24 +4,24 @@ import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsShell } from "@/components/settings-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useJevConfig } from "@/lib/use-jev-config";
+import { useOpenRouterConfig } from "@/lib/use-openrouter-config";
 
-/** The OpenRouter key (or owner token) shared by Jev labels and the AI chat. Stored with the Jev settings. */
+/** The OpenRouter key (or owner token) that pays for the AI chat. */
 export default function OpenRouterSettingsCard({ embedded = false }: { embedded?: boolean } = {}) {
-  const [config, updateConfig] = useJevConfig();
+  const [config, updateConfig] = useOpenRouterConfig();
   return (
     <SettingsShell embedded={embedded}>
       <CardHeader className="pb-4">
         <CardTitle className="text-sm">OpenRouter key</CardTitle>
         <p className="text-xs text-muted-foreground">
-          AI features (Jev labels, AI chat) run through OpenRouter with zero data retention.
+          The AI chat runs through OpenRouter with zero data retention.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="jevUserKey">Your OpenRouter key</Label>
+            <Label htmlFor="openRouterKey">Your OpenRouter key</Label>
             <Input
-              id="jevUserKey"
+              id="openRouterKey"
               type="password"
               autoComplete="off"
               spellCheck={false}
@@ -30,7 +30,7 @@ export default function OpenRouterSettingsCard({ embedded = false }: { embedded?
               onChange={(e) => updateConfig((c) => ({ ...c, userApiKey: e.target.value }))}
             />
             <span className="text-xs text-muted-foreground">
-              Jev labels and the AI chat are paid from this key. Create one at{" "}
+              The AI chat is paid from this key. Create one at{" "}
               <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">
                 openrouter.ai/keys
               </a>{" "}
@@ -44,13 +44,13 @@ export default function OpenRouterSettingsCard({ embedded = false }: { embedded?
               Running this site? Use the shared key instead
             </summary>
             <div className="mt-3 flex flex-col gap-2">
-              <Label htmlFor="jevToken">Owner access token</Label>
+              <Label htmlFor="ownerToken">Owner access token</Label>
               <Input
-                id="jevToken"
+                id="ownerToken"
                 type="password"
                 autoComplete="off"
                 value={config.accessToken}
-                placeholder="Same value as JEV_ACCESS_TOKEN on the server"
+                placeholder="Same value as OWNER_ACCESS_TOKEN on the server"
                 onChange={(e) => updateConfig((c) => ({ ...c, accessToken: e.target.value }))}
               />
               <span className="text-xs text-muted-foreground">
